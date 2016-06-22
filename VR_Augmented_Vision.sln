@@ -1,0 +1,38 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2013
+VisualStudioVersion = 12.0.31101.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VR_Augmented_Vision_CPU", "VR_Augmented_Vision\VR_Augmented_Vision.vcxproj", "{2481034E-ADBF-4E00-9EF8-80077EDE9CF3}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VR_Augmented_Vision_GPU", "VR_Augmented_Vision_GPU\VR_Augmented_Vision_GPU.vcxproj", "{5543C00B-66E6-4D52-9771-1648B5054124}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Debug|x64 = Debug|x64
+		Release|Win32 = Release|Win32
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2481034E-ADBF-4E00-9EF8-80077EDE9CF3}.Debug|Win32.ActiveCfg = Debug|Win32
+		{2481034E-ADBF-4E00-9EF8-80077EDE9CF3}.Debug|Win32.Build.0 = Debug|Win32
+		{2481034E-ADBF-4E00-9EF8-80077EDE9CF3}.Debug|x64.ActiveCfg = Debug|x64
+		{2481034E-ADBF-4E00-9EF8-80077EDE9CF3}.Debug|x64.Build.0 = Debug|x64
+		{2481034E-ADBF-4E00-9EF8-80077EDE9CF3}.Release|Win32.ActiveCfg = Release|Win32
+		{2481034E-ADBF-4E00-9EF8-80077EDE9CF3}.Release|Win32.Build.0 = Release|Win32
+		{2481034E-ADBF-4E00-9EF8-80077EDE9CF3}.Release|x64.ActiveCfg = Release|x64
+		{2481034E-ADBF-4E00-9EF8-80077EDE9CF3}.Release|x64.Build.0 = Release|x64
+		{5543C00B-66E6-4D52-9771-1648B5054124}.Debug|Win32.ActiveCfg = Debug|Win32
+		{5543C00B-66E6-4D52-9771-1648B5054124}.Debug|Win32.Build.0 = Debug|Win32
+		{5543C00B-66E6-4D52-9771-1648B5054124}.Debug|x64.ActiveCfg = Debug|x64
+		{5543C00B-66E6-4D52-9771-1648B5054124}.Debug|x64.Build.0 = Debug|x64
+		{5543C00B-66E6-4D52-9771-1648B5054124}.Release|Win32.ActiveCfg = Release|Win32
+		{5543C00B-66E6-4D52-9771-1648B5054124}.Release|Win32.Build.0 = Release|Win32
+		{5543C00B-66E6-4D52-9771-1648B5054124}.Release|x64.ActiveCfg = Release|x64
+		{5543C00B-66E6-4D52-9771-1648B5054124}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
