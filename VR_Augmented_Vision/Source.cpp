@@ -38,7 +38,7 @@ typedef struct{
 //array of pointers to each camera's frame
 //each mat pointer is atomically updated to the new mat when a new frame comes in.
 //eliminates case where mutex would make thread stop writing, which could lead to another frame, which has been updated, not be drawn
-Frame_Pointer* frame_array[NUMBER_OF_CAMERAS];
+Frame_Pointer frame_array[NUMBER_OF_CAMERAS];
 
 //combined width of input images
 const unsigned int cubeFaceWidth = 1100; 
@@ -62,14 +62,12 @@ DWORD WINAPI Project_to_Screen(void* input);
 
 int main(int argc, char** argv)
 {
-	cudaexport();
-	return 0;
-
 	//zero all starting frames and set up a mutex
 	projected_frame = Mat::zeros(totalHeight, totalWidth, CV_8UC3);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
 	for (unsigned int i = 0; i < NUMBER_OF_CAMERAS; ++i){
-		*(frame_array[i]->frame) = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
-		frame_array[i]->lock = CreateMutex(NULL,FALSE,NULL);
+		Mat frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
+		frame_array[i].frame = &frame;//TODO smart pointer get deallocd? what am i doing wrong?
+		frame_array[i].lock = CreateMutex(NULL,FALSE,NULL);
 	}
 
 	input_videos[top_frame].open(location"top.mp4");
@@ -114,11 +112,11 @@ int main(int argc, char** argv)
 				Mat next_frame;
 				input_videos[i].retrieve(next_frame);
 				//update the current frame's pointer to this new frame
-				DWORD locked = WaitForSingleObject(frame_array[i]->lock, 10);//10 ms timeout
+				DWORD locked = WaitForSingleObject(frame_array[i].lock, 10);//10 ms timeout
 				if (locked == WAIT_OBJECT_0){
-					frame_array[i]->frame = &next_frame;
+					frame_array[i].frame = &next_frame;
 				}
-				ReleaseMutex(frame_array[i]->lock);
+				ReleaseMutex(frame_array[i].lock);
 			}
 		}
 
@@ -146,7 +144,7 @@ DWORD WINAPI Project_to_Screen(void* input){
 			v = 1 - ((float)j / totalHeight);
 			theta = v * M_PI;
 
-			for (int i = area->x; i < area->x+area->width; i++)
+			for (int i = area->x; i < area->x+area->width; i++)//go along columns in inner loop for speed.
 			{
 				//convert x,y cartesian to u,v polar
 
@@ -180,11 +178,11 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((za + 1.0) / 2.0) - 1.0) * cubeFaceWidth);
 					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
 
-					DWORD locked = WaitForSingleObject(frame_array[right_frame]->lock, 10);
+					DWORD locked = WaitForSingleObject(frame_array[right_frame].lock, 10);
 					if (locked == WAIT_OBJECT_0){
-						pixel = (*frame_array[right_frame]->frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+						pixel = (*frame_array[right_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
 					}
-					ReleaseMutex(frame_array[right_frame]->lock);
+					ReleaseMutex(frame_array[right_frame].lock);
 				}
 				else if (xa == -1)
 				{
@@ -192,11 +190,11 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((za + 1.0) / 2.0)) * cubeFaceWidth);
 					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
 
-					DWORD locked = WaitForSingleObject(frame_array[left_frame]->lock, 10);
+					DWORD locked = WaitForSingleObject(frame_array[left_frame].lock, 10);
 					if (locked == WAIT_OBJECT_0){
-						pixel = (*frame_array[left_frame]->frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+						pixel = (*frame_array[left_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
 					}
-					ReleaseMutex(frame_array[left_frame]->lock);
+					ReleaseMutex(frame_array[left_frame].lock);
 				}
 				else if (ya == 1)
 				{
@@ -204,11 +202,11 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((xa + 1.0) / 2.0)) * cubeFaceWidth);
 					yPixel = (int)((((za + 1.0) / 2.0) - 1.0) * cubeFaceHeight);
 
-					DWORD locked = WaitForSingleObject(frame_array[top_frame]->lock, 10);
+					DWORD locked = WaitForSingleObject(frame_array[top_frame].lock, 10);
 					if (locked == WAIT_OBJECT_0){
-						pixel = (*frame_array[top_frame]->frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+						pixel = (*frame_array[top_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
 					}
-					ReleaseMutex(frame_array[top_frame]->lock);
+					ReleaseMutex(frame_array[top_frame].lock);
 				}
 				else if (ya == -1)
 				{
@@ -216,11 +214,11 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((xa + 1.0) / 2.0)) * cubeFaceWidth);
 					yPixel = (int)((((za + 1.0) / 2.0)) * cubeFaceHeight);
 
-					DWORD locked = WaitForSingleObject(frame_array[bottom_frame]->lock, 10);
+					DWORD locked = WaitForSingleObject(frame_array[bottom_frame].lock, 10);
 					if (locked == WAIT_OBJECT_0){
-						pixel = (*frame_array[bottom_frame]->frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+						pixel = (*frame_array[bottom_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
 					}
-					ReleaseMutex(frame_array[bottom_frame]->lock);
+					ReleaseMutex(frame_array[bottom_frame].lock);
 				}
 				else if (za == 1)
 				{
@@ -228,11 +226,11 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((xa + 1.0) / 2.0)) * cubeFaceWidth);
 					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
 
-					DWORD locked = WaitForSingleObject(frame_array[front_frame]->lock, 10);
+					DWORD locked = WaitForSingleObject(frame_array[front_frame].lock, 10);
 					if (locked == WAIT_OBJECT_0){
-						pixel = (*frame_array[front_frame]->frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+						pixel = (*frame_array[front_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
 					}
-					ReleaseMutex(frame_array[front_frame]->lock);
+					ReleaseMutex(frame_array[front_frame].lock);
 				}
 				else if (za == -1)
 				{
@@ -240,11 +238,11 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((xa + 1.0) / 2.0) - 1.0) * cubeFaceWidth);
 					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
 
-					DWORD locked = WaitForSingleObject(frame_array[back_frame]->lock, 10);
+					DWORD locked = WaitForSingleObject(frame_array[back_frame].lock, 10);
 					if (locked == WAIT_OBJECT_0){
-						pixel = (*frame_array[back_frame]->frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+						pixel = (*frame_array[back_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
 					}
-					ReleaseMutex(frame_array[back_frame]->lock);
+					ReleaseMutex(frame_array[back_frame].lock);
 				}
 				else
 				{
