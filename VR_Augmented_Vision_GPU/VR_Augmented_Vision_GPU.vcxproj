@@ -19,7 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{5543C00B-66E6-4D52-9771-1648B5054124}</ProjectGuid>
+    <ProjectGuid>{B36743FE-4884-431E-9C7B-F03285E635EB}</ProjectGuid>
     <RootNamespace>VR_Augmented_Vision_GPU</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -30,7 +30,7 @@
     <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v120</PlatformToolset>
@@ -152,6 +152,9 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <CudaCompile Include="kernel.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Kernal.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

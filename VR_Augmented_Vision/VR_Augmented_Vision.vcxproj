@@ -22,7 +22,7 @@
     <ProjectGuid>{2481034E-ADBF-4E00-9EF8-80077EDE9CF3}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>VR_Augmented_Vision</RootNamespace>
-    <ProjectName>VR_Augmented_Vision_CPU</ProjectName>
+    <ProjectName>VR_Augmented_Vision</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -95,12 +95,12 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(OPENCV_DIR)\..\..\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OPENCV_DIR)\..\..\include;..\VR_Augmented_Vision_GPU</AdditionalIncludeDirectories>
       <Optimization>Disabled</Optimization>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(OPENCV_DIR)\lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opencv_calib3d310d.lib;opencv_core310d.lib;opencv_features2d310d.lib;opencv_flann310d.lib;opencv_highgui310d.lib;opencv_imgcodecs310d.lib;opencv_imgproc310d.lib;opencv_ml310d.lib;opencv_objdetect310d.lib;opencv_photo310d.lib;opencv_shape310d.lib;opencv_stitching310d.lib;opencv_superres310d.lib;opencv_ts310d.lib;opencv_video310d.lib;opencv_videoio310d.lib;opencv_videostab310d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(OPENCV_DIR)\lib;$(OutDir)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>VR_Augmented_Vision_GPU.lib;opencv_calib3d310d.lib;opencv_core310d.lib;opencv_features2d310d.lib;opencv_flann310d.lib;opencv_highgui310d.lib;opencv_imgcodecs310d.lib;opencv_imgproc310d.lib;opencv_ml310d.lib;opencv_objdetect310d.lib;opencv_photo310d.lib;opencv_shape310d.lib;opencv_stitching310d.lib;opencv_superres310d.lib;opencv_ts310d.lib;opencv_video310d.lib;opencv_videoio310d.lib;opencv_videostab310d.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
@@ -121,6 +121,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Source.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\VR_Augmented_Vision_GPU\VR_Augmented_Vision_GPU.vcxproj">
+      <Project>{b36743fe-4884-431e-9c7b-f03285e635eb}</Project>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

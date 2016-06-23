@@ -1,4 +1,4 @@
-
+#include "Kernal.h"
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
@@ -12,7 +12,7 @@ __global__ void addKernel(int *c, const int *a, const int *b)
     c[i] = a[i] + b[i];
 }
 
-int main()
+int cudaexport()
 {
     const int arraySize = 5;
     const int a[arraySize] = { 1, 2, 3, 4, 5 };
