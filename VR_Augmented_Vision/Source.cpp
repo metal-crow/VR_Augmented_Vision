@@ -7,22 +7,38 @@
 #include "opencv2\core.hpp"
 #include "opencv2\highgui.hpp"
 
+#include "kernal.h"
+
 using namespace cv;
 using namespace std;
 
 #define location "C:/Users/Manganese/Desktop/"
 
 //write only
+//the frame that is displayed to the user
 Mat projected_frame;
-//read only
-//TODO should i have a pointer to an old frame, then only when the new frame is created, swap out the pointer?
+
+#define NUMBER_OF_CAMERAS 6
+VideoCapture input_videos[NUMBER_OF_CAMERAS];
+
+//enum for each frame or camera in the frame_pointer or input_videos array
+enum camera_namesE{
+	top_frame = 0,
+	bottom_frame = 1,
+	front_frame = 2,
+	left_frame = 3,
+	right_frame = 4,
+	back_frame = 5,
+} camera_names;
+
+typedef struct{
+	HANDLE lock;//mutex to atomically update the pointer
+	Mat* frame;//pointer to newest frame
+} Frame_Pointer;
+//array of pointers to each camera's frame
+//each mat pointer is atomically updated to the new mat when a new frame comes in.
 //eliminates case where mutex would make thread stop writing, which could lead to another frame, which has been updated, not be drawn
-Mat top_frame;
-Mat bottom_frame;
-Mat front_frame;
-Mat left_frame;
-Mat right_frame;
-Mat back_frame;
+Frame_Pointer* frame_array[NUMBER_OF_CAMERAS];
 
 //combined width of input images
 const unsigned int cubeFaceWidth = 1100; 
@@ -46,21 +62,22 @@ DWORD WINAPI Project_to_Screen(void* input);
 
 int main(int argc, char** argv)
 {
-	//zero all starting frames
-	projected_frame = Mat::zeros(totalHeight, totalWidth, CV_8UC3);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
-	top_frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
-	bottom_frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
-	front_frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
-	left_frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
-	right_frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
-	back_frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
+	cudaexport();
+	return 0;
 
-	VideoCapture top(location"top.mp4");
-	VideoCapture bottom(location"bottom.mp4");
-	VideoCapture front(location"front.mp4");
-	VideoCapture left(location"left.mp4");
-	VideoCapture right(location"right.mp4");
-	VideoCapture back(location"back.mp4");
+	//zero all starting frames and set up a mutex
+	projected_frame = Mat::zeros(totalHeight, totalWidth, CV_8UC3);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
+	for (unsigned int i = 0; i < NUMBER_OF_CAMERAS; ++i){
+		*(frame_array[i]->frame) = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
+		frame_array[i]->lock = CreateMutex(NULL,FALSE,NULL);
+	}
+
+	input_videos[top_frame].open(location"top.mp4");
+	input_videos[bottom_frame].open(location"bottom.mp4");
+	input_videos[front_frame].open(location"front.mp4");
+	input_videos[left_frame].open(location"left.mp4");
+	input_videos[right_frame].open(location"right.mp4");
+	input_videos[back_frame].open(location"back.mp4");
 	namedWindow("");
 
 	//start n threads, to cover the entire screen area
@@ -89,21 +106,21 @@ int main(int argc, char** argv)
 	}
 
 	while (1){
-		//if there is a new frame for a camera, get it
-		//http://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html#videocapture-grab
-		//TODO see link
-		if (top.grab())
-			top.retrieve(top_frame);
-		if (bottom.grab())
-			bottom.retrieve(bottom_frame);
-		if (front.grab())
-			front.retrieve(front_frame);
-		if (left.grab())
-			left.retrieve(left_frame);
-		if (right.grab())
-			right.retrieve(right_frame);
-		if (back.grab())
-			back.retrieve(back_frame);
+		//read any new frames from the cameras
+		for (unsigned int i = 0; i < NUMBER_OF_CAMERAS; ++i){
+			//if there is a new frame for a camera, get it
+			//http://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html#videocapture-grab
+			if (input_videos[i].grab()){
+				Mat next_frame;
+				input_videos[i].retrieve(next_frame);
+				//update the current frame's pointer to this new frame
+				DWORD locked = WaitForSingleObject(frame_array[i]->lock, 10);//10 ms timeout
+				if (locked == WAIT_OBJECT_0){
+					frame_array[i]->frame = &next_frame;
+				}
+				ReleaseMutex(frame_array[i]->lock);
+			}
+		}
 
 		imshow("", projected_frame);
 		waitKey(1);
@@ -163,7 +180,11 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((za + 1.0) / 2.0) - 1.0) * cubeFaceWidth);
 					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
 
-					pixel = right_frame.at<Vec3b>(abs(yPixel), abs(xPixel));
+					DWORD locked = WaitForSingleObject(frame_array[right_frame]->lock, 10);
+					if (locked == WAIT_OBJECT_0){
+						pixel = (*frame_array[right_frame]->frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+					}
+					ReleaseMutex(frame_array[right_frame]->lock);
 				}
 				else if (xa == -1)
 				{
@@ -171,7 +192,11 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((za + 1.0) / 2.0)) * cubeFaceWidth);
 					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
 
-					pixel = left_frame.at<Vec3b>(abs(yPixel), abs(xPixel));
+					DWORD locked = WaitForSingleObject(frame_array[left_frame]->lock, 10);
+					if (locked == WAIT_OBJECT_0){
+						pixel = (*frame_array[left_frame]->frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+					}
+					ReleaseMutex(frame_array[left_frame]->lock);
 				}
 				else if (ya == 1)
 				{
@@ -179,7 +204,11 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((xa + 1.0) / 2.0)) * cubeFaceWidth);
 					yPixel = (int)((((za + 1.0) / 2.0) - 1.0) * cubeFaceHeight);
 
-					pixel = top_frame.at<Vec3b>(abs(yPixel), abs(xPixel));
+					DWORD locked = WaitForSingleObject(frame_array[top_frame]->lock, 10);
+					if (locked == WAIT_OBJECT_0){
+						pixel = (*frame_array[top_frame]->frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+					}
+					ReleaseMutex(frame_array[top_frame]->lock);
 				}
 				else if (ya == -1)
 				{
@@ -187,7 +216,11 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((xa + 1.0) / 2.0)) * cubeFaceWidth);
 					yPixel = (int)((((za + 1.0) / 2.0)) * cubeFaceHeight);
 
-					pixel = bottom_frame.at<Vec3b>(abs(yPixel), abs(xPixel));
+					DWORD locked = WaitForSingleObject(frame_array[bottom_frame]->lock, 10);
+					if (locked == WAIT_OBJECT_0){
+						pixel = (*frame_array[bottom_frame]->frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+					}
+					ReleaseMutex(frame_array[bottom_frame]->lock);
 				}
 				else if (za == 1)
 				{
@@ -195,7 +228,11 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((xa + 1.0) / 2.0)) * cubeFaceWidth);
 					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
 
-					pixel = front_frame.at<Vec3b>(abs(yPixel), abs(xPixel));
+					DWORD locked = WaitForSingleObject(frame_array[front_frame]->lock, 10);
+					if (locked == WAIT_OBJECT_0){
+						pixel = (*frame_array[front_frame]->frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+					}
+					ReleaseMutex(frame_array[front_frame]->lock);
 				}
 				else if (za == -1)
 				{
@@ -203,7 +240,11 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((xa + 1.0) / 2.0) - 1.0) * cubeFaceWidth);
 					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
 
-					pixel = back_frame.at<Vec3b>(abs(yPixel), abs(xPixel));
+					DWORD locked = WaitForSingleObject(frame_array[back_frame]->lock, 10);
+					if (locked == WAIT_OBJECT_0){
+						pixel = (*frame_array[back_frame]->frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+					}
+					ReleaseMutex(frame_array[back_frame]->lock);
 				}
 				else
 				{
