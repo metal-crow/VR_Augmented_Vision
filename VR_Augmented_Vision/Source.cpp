@@ -14,11 +14,12 @@ using namespace std;
 
 #define location "C:/Users/Manganese/Desktop/"
 
+#define NUMBER_OF_CAMERAS 6 //can be a char, since never more than 255 cameras
+
 //write only
 //the frame that is displayed to the user
 Mat projected_frame;
 
-#define NUMBER_OF_CAMERAS 6
 VideoCapture input_videos[NUMBER_OF_CAMERAS];
 
 //enum for each frame or camera in the frame_pointer or input_videos array
@@ -64,7 +65,7 @@ int main(int argc, char** argv)
 {
 	//zero all starting frames and set up a mutex
 	projected_frame = Mat::zeros(totalHeight, totalWidth, CV_8UC3);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
-	for (unsigned int i = 0; i < NUMBER_OF_CAMERAS; ++i){
+	for (unsigned char i = 0; i < NUMBER_OF_CAMERAS; ++i){
 		Mat frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
 		frame_array[i].frame = &frame;//TODO smart pointer get deallocd? what am i doing wrong?
 		frame_array[i].lock = CreateMutex(NULL,FALSE,NULL);
@@ -105,7 +106,7 @@ int main(int argc, char** argv)
 
 	while (1){
 		//read any new frames from the cameras
-		for (unsigned int i = 0; i < NUMBER_OF_CAMERAS; ++i){
+		for (unsigned char i = 0; i < NUMBER_OF_CAMERAS; ++i){
 			//if there is a new frame for a camera, get it
 			//http://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html#videocapture-grab
 			if (input_videos[i].grab()){
@@ -135,13 +136,13 @@ DWORD WINAPI Project_to_Screen(void* input){
 		//inverse mapping
 		//can do better with gpu shaders
 
-		float u, v; //Normalised texture coordinates, from 0 to 1, starting at lower left corner
-		float phi, theta; //Polar coordinates
+		double u, v; //Normalised texture coordinates, from 0 to 1, starting at lower left corner
+		double phi, theta; //Polar coordinates
 
 		for (int j = area->y; j < area->y+area->height; j++)
 		{
 			//Rows start from the bottom
-			v = 1 - ((float)j / totalHeight);
+			v = 1 - ((double)j / totalHeight);
 			theta = v * M_PI;
 
 			for (int i = area->x; i < area->x+area->width; i++)//go along columns in inner loop for speed.
@@ -149,19 +150,19 @@ DWORD WINAPI Project_to_Screen(void* input){
 				//convert x,y cartesian to u,v polar
 
 				//Columns start from the left
-				u = ((float)i / totalWidth);
+				u = ((double)i / totalWidth);
 				phi = u * 2 * M_PI;
 
 				//convert polar to 3d vector
-				float x, y, z; //Unit vector
+				double x, y, z; //Unit vector
 				x = sin(phi) * sin(theta) * -1;
 				y = cos(theta);
 				z = cos(phi) * sin(theta) * -1;
 
-				float xa, ya, za;
-				float a;
+				double xa, ya, za;
+				double a;
 
-				a = fmaxf(fmaxf(abs(x), abs(y)), abs(z));
+				a = fmax(fmax(abs(x), abs(y)), abs(z));
 
 				//Vector Parallel to the unit vector that lies on one of the cube faces
 				xa = x / a;
