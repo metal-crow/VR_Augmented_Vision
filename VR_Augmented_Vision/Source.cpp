@@ -32,10 +32,14 @@ enum camera_namesE{
 	back_frame = 5,
 } camera_names;
 
+CRITICAL_SECTION update_frame_buffer;
+
 typedef struct{
-	HANDLE lock;//mutex to atomically update the pointer
-	Mat* frame;//pointer to newest frame
+	Mat frame_0;//frames used for frame buffer
+	Mat frame_1;
+	unsigned char selected_frame;
 } Frame_Pointer;
+
 //array of pointers to each camera's frame
 //each mat pointer is atomically updated to the new mat when a new frame comes in.
 //eliminates case where mutex would make thread stop writing, which could lead to another frame, which has been updated, not be drawn
@@ -49,7 +53,7 @@ const unsigned int totalHeight = cubeFaceHeight * 3; //3 vertical faces
 
 //desired size of output image
 const unsigned int screenWidth = 1920;
-const unsigned int screenHeight = 1200;
+const unsigned int screenHeight = 1200;//NOTE: since we want to cut of the tops of the poles, makes this slightly higher than actual, then crop
 
 typedef struct{
 	unsigned int x;
@@ -63,12 +67,14 @@ DWORD WINAPI Project_to_Screen(void* input);
 
 int main(int argc, char** argv)
 {
-	//zero all starting frames and set up a mutex
-	projected_frame = Mat::zeros(totalHeight, totalWidth, CV_8UC3);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
+	InitializeCriticalSection(&update_frame_buffer);
+
+	//setup the frame buffer and selected frame
+	projected_frame = Mat::zeros(screenHeight, screenWidth, CV_8UC3);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
 	for (unsigned char i = 0; i < NUMBER_OF_CAMERAS; ++i){
 		Mat frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
-		frame_array[i].frame = &frame;//TODO smart pointer get deallocd? what am i doing wrong?
-		frame_array[i].lock = CreateMutex(NULL,FALSE,NULL);
+		frame_array[i].frame_0 = frame;
+		frame_array[i].selected_frame = 0;
 	}
 
 	input_videos[top_frame].open(location"top.mp4");
@@ -80,7 +86,7 @@ int main(int argc, char** argv)
 	namedWindow("");
 
 	//start n threads, to cover the entire screen area
-	unsigned int per_thread_width = screenWidth / (NUM_THREADS/2);
+	unsigned int per_thread_width = screenWidth / (NUM_THREADS/3);
 	unsigned int per_thread_height = screenHeight / (NUM_THREADS/2);
 	int x_offset = 0;
 	int y_offset = 0;
@@ -100,8 +106,10 @@ int main(int argc, char** argv)
 			NULL);   // returns the thread identifier 
 
 		x_offset++;
-		if (x_offset == NUM_THREADS/2)
+		if (x_offset % 2 == 0){
+			x_offset = 0;
 			y_offset++;
+		}
 	}
 
 	while (1){
@@ -112,12 +120,24 @@ int main(int argc, char** argv)
 			if (input_videos[i].grab()){
 				Mat next_frame;
 				input_videos[i].retrieve(next_frame);
-				//update the current frame's pointer to this new frame
-				DWORD locked = WaitForSingleObject(frame_array[i].lock, 10);//10 ms timeout
-				if (locked == WAIT_OBJECT_0){
-					frame_array[i].frame = &next_frame;
+				//put new frame in framebuffer and update frame buffer current
+				switch (frame_array[i].selected_frame){
+					case 0:
+						//this is the only syncronization needed because b4 this point, if a thread gets a pointer to the image data,
+						//the mat's refcount will atomicly increment, and this section wont free the image data, but will change the pointer.
+						//so the old thread will still have access to stale, unfreed data.
+						EnterCriticalSection(&update_frame_buffer);
+							frame_array[i].frame_1 = next_frame;//this changes the pointer to a new malloc, non-atomically.
+							frame_array[i].selected_frame = 1;//must be atomic
+						LeaveCriticalSection(&update_frame_buffer);
+						break;
+					case 1:
+						EnterCriticalSection(&update_frame_buffer);
+							frame_array[i].frame_0 = next_frame;
+							frame_array[i].selected_frame = 0;
+						LeaveCriticalSection(&update_frame_buffer);
+						break;
 				}
-				ReleaseMutex(frame_array[i].lock);
 			}
 		}
 
@@ -142,7 +162,7 @@ DWORD WINAPI Project_to_Screen(void* input){
 		for (int j = area->y; j < area->y+area->height; j++)
 		{
 			//Rows start from the bottom
-			v = 1 - ((double)j / totalHeight);
+			v = 1 - ((double)j / screenHeight);
 			theta = v * M_PI;
 
 			for (int i = area->x; i < area->x+area->width; i++)//go along columns in inner loop for speed.
@@ -150,7 +170,7 @@ DWORD WINAPI Project_to_Screen(void* input){
 				//convert x,y cartesian to u,v polar
 
 				//Columns start from the left
-				u = ((double)i / totalWidth);
+				u = ((double)i / screenWidth);
 				phi = u * 2 * M_PI;
 
 				//convert polar to 3d vector
@@ -179,11 +199,15 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((za + 1.0) / 2.0) - 1.0) * cubeFaceWidth);
 					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
 
-					DWORD locked = WaitForSingleObject(frame_array[right_frame].lock, 10);
-					if (locked == WAIT_OBJECT_0){
-						pixel = (*frame_array[right_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+					switch (frame_array[right_frame].selected_frame){
+						case 0:
+							pixel = frame_array[right_frame].frame_0.at<Vec3b>(abs(yPixel), abs(xPixel));
+							break;
+						case 1:
+							pixel = frame_array[right_frame].frame_1.at<Vec3b>(abs(yPixel), abs(xPixel));
+							break;
 					}
-					ReleaseMutex(frame_array[right_frame].lock);
+					//pixel = Vec3b(0, 0, 255);//red
 				}
 				else if (xa == -1)
 				{
@@ -191,35 +215,51 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((za + 1.0) / 2.0)) * cubeFaceWidth);
 					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
 
-					DWORD locked = WaitForSingleObject(frame_array[left_frame].lock, 10);
-					if (locked == WAIT_OBJECT_0){
-						pixel = (*frame_array[left_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+					switch (frame_array[left_frame].selected_frame){
+						case 0:
+							pixel = frame_array[left_frame].frame_0.at<Vec3b>(abs(yPixel), abs(xPixel));
+							break;
+						case 1:
+							pixel = frame_array[left_frame].frame_1.at<Vec3b>(abs(yPixel), abs(xPixel));
+							break;
 					}
-					ReleaseMutex(frame_array[left_frame].lock);
+					//pixel = Vec3b(0, 255, 255);//yellow
 				}
-				else if (ya == 1)
+				else if (ya == -1)
 				{
 					//Up
 					xPixel = (int)((((xa + 1.0) / 2.0)) * cubeFaceWidth);
 					yPixel = (int)((((za + 1.0) / 2.0) - 1.0) * cubeFaceHeight);
+					//flip vertical
+					yPixel = (cubeFaceHeight - 1) - abs(yPixel);
 
-					DWORD locked = WaitForSingleObject(frame_array[top_frame].lock, 10);
-					if (locked == WAIT_OBJECT_0){
-						pixel = (*frame_array[top_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+					switch (frame_array[top_frame].selected_frame){
+						case 0:
+							pixel = frame_array[top_frame].frame_0.at<Vec3b>(abs(yPixel), abs(xPixel));
+							break;
+						case 1:
+							pixel = frame_array[top_frame].frame_1.at<Vec3b>(abs(yPixel), abs(xPixel));
+							break;
 					}
-					ReleaseMutex(frame_array[top_frame].lock);
+					//pixel = Vec3b(0, 60, 255);//orange
 				}
-				else if (ya == -1)
+				else if (ya == 1)
 				{
 					//Down
 					xPixel = (int)((((xa + 1.0) / 2.0)) * cubeFaceWidth);
 					yPixel = (int)((((za + 1.0) / 2.0)) * cubeFaceHeight);
+					//flip vertical
+					yPixel = (cubeFaceHeight - 1) - abs(yPixel);
 
-					DWORD locked = WaitForSingleObject(frame_array[bottom_frame].lock, 10);
-					if (locked == WAIT_OBJECT_0){
-						pixel = (*frame_array[bottom_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+					switch (frame_array[bottom_frame].selected_frame){
+						case 0:
+							pixel = frame_array[bottom_frame].frame_0.at<Vec3b>(abs(yPixel), abs(xPixel));
+							break;
+						case 1:
+							pixel = frame_array[bottom_frame].frame_1.at<Vec3b>(abs(yPixel), abs(xPixel));
+							break;
 					}
-					ReleaseMutex(frame_array[bottom_frame].lock);
+					//pixel = Vec3b(255, 0, 0);//blue
 				}
 				else if (za == 1)
 				{
@@ -227,11 +267,15 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((xa + 1.0) / 2.0)) * cubeFaceWidth);
 					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
 
-					DWORD locked = WaitForSingleObject(frame_array[front_frame].lock, 10);
-					if (locked == WAIT_OBJECT_0){
-						pixel = (*frame_array[front_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+					switch (frame_array[front_frame].selected_frame){
+						case 0:
+							pixel = frame_array[front_frame].frame_0.at<Vec3b>(abs(yPixel), abs(xPixel));
+							break;
+						case 1:
+							pixel = frame_array[front_frame].frame_1.at<Vec3b>(abs(yPixel), abs(xPixel));
+							break;
 					}
-					ReleaseMutex(frame_array[front_frame].lock);
+					//pixel = Vec3b(150, 150, 150);//grey
 				}
 				else if (za == -1)
 				{
@@ -239,11 +283,15 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((xa + 1.0) / 2.0) - 1.0) * cubeFaceWidth);
 					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
 
-					DWORD locked = WaitForSingleObject(frame_array[back_frame].lock, 10);
-					if (locked == WAIT_OBJECT_0){
-						pixel = (*frame_array[back_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+					switch (frame_array[back_frame].selected_frame){
+						case 0:
+							pixel = frame_array[back_frame].frame_0.at<Vec3b>(abs(yPixel), abs(xPixel));
+							break;
+						case 1:
+							pixel = frame_array[back_frame].frame_1.at<Vec3b>(abs(yPixel), abs(xPixel));
+							break;
 					}
-					ReleaseMutex(frame_array[back_frame].lock);
+					//pixel = Vec3b(150, 0, 0);//light blue
 				}
 				else
 				{
