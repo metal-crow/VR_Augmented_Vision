@@ -35,8 +35,8 @@ enum camera_namesE{
 CRITICAL_SECTION update_frame_buffer;
 
 typedef struct{
-	Mat frame_0;//frames used for frame buffer
-	Mat frame_1;
+	Mat* frame_0;//frames used for frame buffer
+	Mat* frame_1;
 	unsigned char selected_frame;
 } Frame_Pointer;
 
@@ -73,7 +73,7 @@ int main(int argc, char** argv)
 	projected_frame = Mat::zeros(screenHeight, screenWidth, CV_8UC3);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
 	for (unsigned char i = 0; i < NUMBER_OF_CAMERAS; ++i){
 		Mat frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
-		frame_array[i].frame_0 = frame;
+		frame_array[i].frame_0 = new Mat(frame);//copy frame into heap, return pointer
 		frame_array[i].selected_frame = 0;
 	}
 
@@ -120,6 +120,7 @@ int main(int argc, char** argv)
 			if (input_videos[i].grab()){
 				Mat next_frame;
 				input_videos[i].retrieve(next_frame);
+				Mat* next_frame_pointer = new Mat(next_frame);
 				//put new frame in framebuffer and update frame buffer current
 				switch (frame_array[i].selected_frame){
 					case 0:
@@ -127,13 +128,13 @@ int main(int argc, char** argv)
 						//the mat's refcount will atomicly increment, and this section wont free the image data, but will change the pointer.
 						//so the old thread will still have access to stale, unfreed data.
 						EnterCriticalSection(&update_frame_buffer);
-							frame_array[i].frame_1 = next_frame;//this changes the pointer to a new malloc, non-atomically.
+							frame_array[i].frame_1 = next_frame_pointer;//this changes the pointer to a new malloc, non-atomically.
 							frame_array[i].selected_frame = 1;//must be atomic
 						LeaveCriticalSection(&update_frame_buffer);
 						break;
 					case 1:
 						EnterCriticalSection(&update_frame_buffer);
-							frame_array[i].frame_0 = next_frame;
+							frame_array[i].frame_0 = next_frame_pointer;
 							frame_array[i].selected_frame = 0;
 						LeaveCriticalSection(&update_frame_buffer);
 						break;
@@ -201,10 +202,10 @@ DWORD WINAPI Project_to_Screen(void* input){
 
 					switch (frame_array[right_frame].selected_frame){
 						case 0:
-							pixel = frame_array[right_frame].frame_0.at<Vec3b>(abs(yPixel), abs(xPixel));
+							pixel = frame_array[right_frame].frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
 							break;
 						case 1:
-							pixel = frame_array[right_frame].frame_1.at<Vec3b>(abs(yPixel), abs(xPixel));
+							pixel = frame_array[right_frame].frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
 							break;
 					}
 					//pixel = Vec3b(0, 0, 255);//red
@@ -217,10 +218,10 @@ DWORD WINAPI Project_to_Screen(void* input){
 
 					switch (frame_array[left_frame].selected_frame){
 						case 0:
-							pixel = frame_array[left_frame].frame_0.at<Vec3b>(abs(yPixel), abs(xPixel));
+							pixel = frame_array[left_frame].frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
 							break;
 						case 1:
-							pixel = frame_array[left_frame].frame_1.at<Vec3b>(abs(yPixel), abs(xPixel));
+							pixel = frame_array[left_frame].frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
 							break;
 					}
 					//pixel = Vec3b(0, 255, 255);//yellow
@@ -235,10 +236,10 @@ DWORD WINAPI Project_to_Screen(void* input){
 
 					switch (frame_array[top_frame].selected_frame){
 						case 0:
-							pixel = frame_array[top_frame].frame_0.at<Vec3b>(abs(yPixel), abs(xPixel));
+							pixel = frame_array[top_frame].frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
 							break;
 						case 1:
-							pixel = frame_array[top_frame].frame_1.at<Vec3b>(abs(yPixel), abs(xPixel));
+							pixel = frame_array[top_frame].frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
 							break;
 					}
 					//pixel = Vec3b(0, 60, 255);//orange
@@ -253,10 +254,10 @@ DWORD WINAPI Project_to_Screen(void* input){
 
 					switch (frame_array[bottom_frame].selected_frame){
 						case 0:
-							pixel = frame_array[bottom_frame].frame_0.at<Vec3b>(abs(yPixel), abs(xPixel));
+							pixel = frame_array[bottom_frame].frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
 							break;
 						case 1:
-							pixel = frame_array[bottom_frame].frame_1.at<Vec3b>(abs(yPixel), abs(xPixel));
+							pixel = frame_array[bottom_frame].frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
 							break;
 					}
 					//pixel = Vec3b(255, 0, 0);//blue
@@ -269,10 +270,10 @@ DWORD WINAPI Project_to_Screen(void* input){
 
 					switch (frame_array[front_frame].selected_frame){
 						case 0:
-							pixel = frame_array[front_frame].frame_0.at<Vec3b>(abs(yPixel), abs(xPixel));
+							pixel = frame_array[front_frame].frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
 							break;
 						case 1:
-							pixel = frame_array[front_frame].frame_1.at<Vec3b>(abs(yPixel), abs(xPixel));
+							pixel = frame_array[front_frame].frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
 							break;
 					}
 					//pixel = Vec3b(150, 150, 150);//grey
@@ -285,10 +286,10 @@ DWORD WINAPI Project_to_Screen(void* input){
 
 					switch (frame_array[back_frame].selected_frame){
 						case 0:
-							pixel = frame_array[back_frame].frame_0.at<Vec3b>(abs(yPixel), abs(xPixel));
+							pixel = frame_array[back_frame].frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
 							break;
 						case 1:
-							pixel = frame_array[back_frame].frame_1.at<Vec3b>(abs(yPixel), abs(xPixel));
+							pixel = frame_array[back_frame].frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
 							break;
 					}
 					//pixel = Vec3b(150, 0, 0);//light blue
