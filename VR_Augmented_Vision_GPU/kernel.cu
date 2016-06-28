@@ -5,12 +5,13 @@
 #include "math.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 unsigned char number_of_cameras;
 unsigned int frame_width, frame_height;
 
 unsigned int projected_frame_width, projected_frame_height;
-unsigned char* projected_frame;//dont need a second buffer because memcpy is thread irrelivent, so worst case a single pixel is corrupted
+unsigned char* projected_frame;//dont need a second buffer because memcpy is thread agnostic, so worst case a single pixel is corrupted
 
 enum camera_namesE{
 	top_frame = 0,
@@ -27,48 +28,84 @@ typedef struct{
 	unsigned char selected_frame;//this is used by the thread to get pixel data from the current frame. Must be in range 0 to number_of buffer frames-1
 } Frame_Info;
 
-Frame_Info* frame_array; 
+Frame_Info* frame_array;//pointer stored on host memory, which points to device memory
 
 //allocate space for the array of images, and the buffer images for each camera, and the final projected image
 //also set some global constants
-void allocate_frames(unsigned char arg_number_of_cameras, unsigned int arg_frame_width, unsigned int arg_frame_height, unsigned int arg_projected_frame_width, unsigned int arg_projected_frame_height){
-	cudaMalloc(&frame_array, arg_number_of_cameras*sizeof(Frame_Info));
-
+void allocate_frames(unsigned char arg_number_of_cameras, 
+					 unsigned int arg_frame_width, unsigned int arg_frame_height, 
+					 unsigned int arg_projected_frame_width, unsigned int arg_projected_frame_height)
+{
+	//save these variables
 	number_of_cameras = arg_number_of_cameras;
 	frame_width = arg_frame_width;
 	frame_height = arg_frame_height;
 	projected_frame_width = arg_projected_frame_width;
 	projected_frame_height = arg_projected_frame_height;
-
-	for (unsigned int i = 0; i < arg_number_of_cameras; ++i){
-		cudaMalloc(&frame_array[i].frame_0, arg_frame_width*arg_frame_height*3*sizeof(unsigned char));
-		cudaMalloc(&frame_array[i].frame_1, arg_frame_width*arg_frame_height*3*sizeof(unsigned char));
+	
+	cudaError_t cudaStatus = cudaMalloc(&frame_array, arg_number_of_cameras*sizeof(Frame_Info));//allocate space for frame array
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
 	}
 
-	cudaMalloc(&projected_frame, arg_projected_frame_width*arg_projected_frame_height * 3 * sizeof(unsigned char));
+	for (unsigned char i = 0; i < arg_number_of_cameras; ++i){
+		//setup frame info locally (point to device allocations)
+		Frame_Info camera_frame_info;
+		cudaMalloc(&camera_frame_info.frame_0, arg_frame_width*arg_frame_height * 3 * sizeof(unsigned char));
+		cudaMalloc(&camera_frame_info.frame_1, arg_frame_width*arg_frame_height * 3 * sizeof(unsigned char));
+		camera_frame_info.selected_frame = 0;
+		//copy over local frame info to device memory
+		cudaStatus = cudaMemcpy(&frame_array[i], &camera_frame_info, sizeof(Frame_Info), cudaMemcpyHostToDevice);
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaMalloc failed!");
+		}
+	}
+
+	cudaStatus = cudaMalloc(&projected_frame, arg_projected_frame_width*arg_projected_frame_height * 3 * sizeof(unsigned char));//allocate the projected frame
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
+	}
 }
 
-//given a pointer to an image on the host memory, copy to the currently unused frame buffer for that frame in the device memory
+//given a pointer to an image on the host memory, copy to the currently unused frame buffer for that frame in the device memory, and update the selected frame indicator
+//don't need syncronization like in non-gpu code, because we're not changing the pointer, but writing inplace to the buffer, which is thread safe. Worst case 1 corrupted pixel.
+//updating selected frame must be atomic though
 void copy_new_frame(unsigned char camera, unsigned char* image_data){
-	switch (frame_array[camera].selected_frame){
+	//since we can't dereference device memory on host code
+	printf("start read");
+	Frame_Info frame;
+	cudaMemcpy(&frame, &frame_array[camera], sizeof(Frame_Info), cudaMemcpyDeviceToHost);
+	printf("camera %d, &frame.frame_0 %p, frame.selected_frame %d\n", camera, frame.frame_0, frame.selected_frame);
+
+	switch (frame.selected_frame){
 		case 0:
-			cudaMemcpy(frame_array[camera].frame_0, image_data, frame_width*frame_height * 3 * sizeof(unsigned char), cudaMemcpyHostToDevice);
+			cudaMemcpy(frame.frame_1, image_data, frame_width*frame_height * 3 * sizeof(unsigned char), cudaMemcpyHostToDevice);
+			frame.selected_frame = 1;
 			break;
 		case 1:
-			cudaMemcpy(frame_array[camera].frame_1, image_data, frame_width*frame_height * 3 * sizeof(unsigned char), cudaMemcpyHostToDevice);
+			cudaMemcpy(frame.frame_0, image_data, frame_width*frame_height * 3 * sizeof(unsigned char), cudaMemcpyHostToDevice);
+			frame.selected_frame = 0;
 			break;
 	}
+
+	cudaMemcpy(&(frame_array[camera].selected_frame), &frame.selected_frame, sizeof(unsigned char), cudaMemcpyHostToDevice);//TODO atomic
 }
 
-//TODO cuda atomic integer alter
-void swap_current_frame_buffer(unsigned char camera){
-
+//copy the generated projected frame stored on the gpu to the cpu memory
+void read_projected_frame(unsigned char*  host_projection_frame){
+	cudaError_t cudaStatus = cudaMemcpy(host_projection_frame, projected_frame, projected_frame_width*projected_frame_height * 3 * sizeof(unsigned char), cudaMemcpyDeviceToHost);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
+	}
 }
 
 //this is the function that is parralelized
 //each handles a single pixel on the projection screen
 //TODO might have to be more like 4 pixels? Test various numbers
-__global__ void Project_to_Screen(){
+__global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned int projected_frame_width, 
+								  unsigned int frame_width, unsigned int frame_height,
+								  Frame_Info* frame_array, unsigned char* projected_frame)
+{
 	//http://stackoverflow.com/questions/34250742/converting-a-cubemap-into-equirectangular-panorama
 	//inverse mapping
 
@@ -77,12 +114,12 @@ __global__ void Project_to_Screen(){
 
 	//convert x,y cartesian to u,v polar
 
-	unsigned int j = 0;//pixel row(height)
+	unsigned int j = 0xFFFF0000 & (threadIdx.x + blockIdx.x * blockDim.x);//TODO pixel row(height)
 	//Rows start from the bottom
 	v = 1 - ((double)j / projected_frame_height);
 	theta = v * CUDART_PI_F;
 
-	unsigned int i = 0;//pixel column(width)
+	unsigned int i = 0x0000FFFF & (threadIdx.x + blockIdx.x * blockDim.x);//TODO pixel column(width)
 	//Columns start from the left
 	u = ((double)i / projected_frame_width);
 	phi = u * 2 * CUDART_PI_F;
@@ -94,7 +131,7 @@ __global__ void Project_to_Screen(){
 	y = cos(theta);
 	z = cos(phi) * sin(theta) * -1;
 
-	double xa, ya, za;
+	int xa, ya, za;
 	double a;
 
 	a = fmax(fmax(abs(x), abs(y)), abs(z));
@@ -106,7 +143,6 @@ __global__ void Project_to_Screen(){
 
 	unsigned char pixel[3];
 	int xPixel, yPixel;
-	int xOffset, yOffset;
 
 	while (1)
 	{
@@ -116,11 +152,19 @@ __global__ void Project_to_Screen(){
 			xPixel = (int)((((za + 1.0) / 2.0) - 1.0) * frame_width);
 			yPixel = (int)((((ya + 1.0) / 2.0)) * frame_height);
 
-			DWORD locked = WaitForSingleObject(frame_array[right_frame].lock, 10);
-			if (locked == WAIT_OBJECT_0){
-				pixel = (*frame_array[right_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+			switch (frame_array[right_frame].selected_frame){
+				case 0:
+					pixel[0] = frame_array[right_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[right_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[right_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					break;
+				case 1:
+					pixel[0] = frame_array[right_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[right_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[right_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					break;
 			}
-			ReleaseMutex(frame_array[right_frame].lock);
+			//pixel = Vec3b(0, 0, 255);//red
 		}
 		else if (xa == -1)
 		{
@@ -128,35 +172,63 @@ __global__ void Project_to_Screen(){
 			xPixel = (int)((((za + 1.0) / 2.0)) * frame_width);
 			yPixel = (int)((((ya + 1.0) / 2.0)) * frame_height);
 
-			DWORD locked = WaitForSingleObject(frame_array[left_frame].lock, 10);
-			if (locked == WAIT_OBJECT_0){
-				pixel = (*frame_array[left_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+			switch (frame_array[left_frame].selected_frame){
+				case 0:
+					pixel[0] = frame_array[left_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[left_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[left_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					break;
+				case 1:
+					pixel[0] = frame_array[left_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[left_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[left_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					break;
 			}
-			ReleaseMutex(frame_array[left_frame].lock);
+			//pixel = Vec3b(0, 255, 255);//yellow
 		}
-		else if (ya == 1)
+		else if (ya == -1)
 		{
 			//Up
 			xPixel = (int)((((xa + 1.0) / 2.0)) * frame_width);
 			yPixel = (int)((((za + 1.0) / 2.0) - 1.0) * frame_height);
+			//flip vertical
+			yPixel = (frame_height - 1) - abs(yPixel);
 
-			DWORD locked = WaitForSingleObject(frame_array[top_frame].lock, 10);
-			if (locked == WAIT_OBJECT_0){
-				pixel = (*frame_array[top_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+			switch (frame_array[top_frame].selected_frame){
+				case 0:
+					pixel[0] = frame_array[top_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[top_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[top_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					break;
+				case 1:
+					pixel[0] = frame_array[top_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[top_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[top_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					break;
 			}
-			ReleaseMutex(frame_array[top_frame].lock);
+			//pixel = Vec3b(0, 60, 255);//orange
 		}
-		else if (ya == -1)
+		else if (ya == 1)
 		{
 			//Down
 			xPixel = (int)((((xa + 1.0) / 2.0)) * frame_width);
 			yPixel = (int)((((za + 1.0) / 2.0)) * frame_height);
+			//flip vertical
+			yPixel = (frame_height - 1) - abs(yPixel);
 
-			DWORD locked = WaitForSingleObject(frame_array[bottom_frame].lock, 10);
-			if (locked == WAIT_OBJECT_0){
-				pixel = (*frame_array[bottom_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+			switch (frame_array[bottom_frame].selected_frame){
+				case 0:
+					pixel[0] = frame_array[bottom_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[bottom_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[bottom_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					break;
+				case 1:
+					pixel[0] = frame_array[bottom_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[bottom_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[bottom_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					break;
 			}
-			ReleaseMutex(frame_array[bottom_frame].lock);
+			//pixel = Vec3b(255, 0, 0);//blue
 		}
 		else if (za == 1)
 		{
@@ -164,11 +236,19 @@ __global__ void Project_to_Screen(){
 			xPixel = (int)((((xa + 1.0) / 2.0)) * frame_width);
 			yPixel = (int)((((ya + 1.0) / 2.0)) * frame_height);
 
-			DWORD locked = WaitForSingleObject(frame_array[front_frame].lock, 10);
-			if (locked == WAIT_OBJECT_0){
-				pixel = (*frame_array[front_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+			switch (frame_array[front_frame].selected_frame){
+				case 0:
+					pixel[0] = frame_array[front_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[front_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[front_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					break;
+				case 1:
+					pixel[0] = frame_array[front_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[front_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[front_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					break;
 			}
-			ReleaseMutex(frame_array[front_frame].lock);
+			//pixel = Vec3b(150, 150, 150);//grey
 		}
 		else if (za == -1)
 		{
@@ -176,11 +256,19 @@ __global__ void Project_to_Screen(){
 			xPixel = (int)((((xa + 1.0) / 2.0) - 1.0) * frame_width);
 			yPixel = (int)((((ya + 1.0) / 2.0)) * frame_height);
 
-			DWORD locked = WaitForSingleObject(frame_array[back_frame].lock, 10);
-			if (locked == WAIT_OBJECT_0){
-				pixel = (*frame_array[back_frame].frame).at<Vec3b>(abs(yPixel), abs(xPixel));
+			switch (frame_array[back_frame].selected_frame){
+				case 0:
+					pixel[0] = frame_array[back_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[back_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[back_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					break;
+				case 1:
+					pixel[0] = frame_array[back_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[back_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[back_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					break;
 			}
-			ReleaseMutex(frame_array[back_frame].lock);
+			//pixel = Vec3b(150, 0, 0);//light blue
 		}
 		else
 		{
@@ -193,7 +281,19 @@ __global__ void Project_to_Screen(){
 	}
 }
 
+#define THREADS_PER_BLOCK 512
 
+void cuda_run(){
+	cudaError_t cudaStatus;
+
+	// Choose which GPU to run on, change this on a multi-GPU system.
+	cudaStatus = cudaSetDevice(0);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
+	}
+
+	Project_to_Screen << <(projected_frame_height * projected_frame_width) / THREADS_PER_BLOCK, THREADS_PER_BLOCK >> >(projected_frame_height, projected_frame_width, frame_width, frame_height, frame_array, projected_frame);
+}
 
 
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
@@ -204,7 +304,7 @@ __global__ void addKernel(int *c, const int *a, const int *b)
     c[i] = a[i] + b[i];
 }
 
-int cuda_run()
+int a()
 {
     const int arraySize = 5;
     const int a[arraySize] = { 1, 2, 3, 4, 5 };

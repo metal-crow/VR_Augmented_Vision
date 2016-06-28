@@ -12,6 +12,7 @@
 using namespace cv;
 using namespace std;
 
+#define GPU 1 //0 for CPU only, 1 for GPU
 #define location "C:/Users/Manganese/Desktop/"
 
 #define NUMBER_OF_CAMERAS 6 //can be a char, since never more than 255 cameras
@@ -19,6 +20,9 @@ using namespace std;
 //write only
 //the frame that is displayed to the user
 Mat projected_frame;
+#if GPU
+unsigned char* projected_frame_data;
+#endif
 
 VideoCapture input_videos[NUMBER_OF_CAMERAS];
 
@@ -70,12 +74,18 @@ int main(int argc, char** argv)
 	InitializeCriticalSection(&update_frame_buffer);
 
 	//setup the frame buffer and selected frame
+#if GPU
+	projected_frame_data = (unsigned char*)malloc(screenWidth*screenHeight * 3 * sizeof(unsigned char));
+	allocate_frames(NUMBER_OF_CAMERAS, cubeFaceWidth, cubeFaceHeight, screenWidth, screenHeight);
+#else
 	projected_frame = Mat::zeros(screenHeight, screenWidth, CV_8UC3);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
+
 	for (unsigned char i = 0; i < NUMBER_OF_CAMERAS; ++i){
 		Mat frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
 		frame_array[i].frame_0 = new Mat(frame);//copy frame into heap, return pointer
 		frame_array[i].selected_frame = 0;
 	}
+#endif
 
 	input_videos[top_frame].open(location"top.mp4");
 	input_videos[bottom_frame].open(location"bottom.mp4");
@@ -85,6 +95,9 @@ int main(int argc, char** argv)
 	input_videos[back_frame].open(location"back.mp4");
 	namedWindow("");
 
+#if GPU
+	cuda_run();
+#else
 	//start n threads, to cover the entire screen area
 	unsigned int per_thread_width = screenWidth / (NUM_THREADS/3);
 	unsigned int per_thread_height = screenHeight / (NUM_THREADS/2);
@@ -111,6 +124,7 @@ int main(int argc, char** argv)
 			y_offset++;
 		}
 	}
+#endif
 
 	while (1){
 		//read any new frames from the cameras
@@ -120,6 +134,9 @@ int main(int argc, char** argv)
 			if (input_videos[i].grab()){
 				Mat next_frame;
 				input_videos[i].retrieve(next_frame);
+			#if GPU
+				copy_new_frame(i, next_frame.data);
+			#else
 				Mat* next_frame_pointer = new Mat(next_frame);
 				//put new frame in framebuffer and update frame buffer current
 				switch (frame_array[i].selected_frame){
@@ -139,9 +156,12 @@ int main(int argc, char** argv)
 						LeaveCriticalSection(&update_frame_buffer);
 						break;
 				}
+			#endif
 			}
 		}
 
+		read_projected_frame(projected_frame_data);
+		projected_frame = Mat(screenHeight, screenWidth, CV_8UC3, projected_frame_data);
 		imshow("", projected_frame);
 		waitKey(1);
 		//imwrite(location"out.png", projected_frame);
@@ -192,7 +212,6 @@ DWORD WINAPI Project_to_Screen(void* input){
 
 				Vec3b pixel;
 				int xPixel, yPixel;
-				int xOffset, yOffset;
 
 				if (xa == 1)
 				{
