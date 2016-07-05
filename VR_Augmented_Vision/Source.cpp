@@ -12,7 +12,7 @@
 using namespace cv;
 using namespace std;
 
-#define GPU 1 //0 for CPU only, 1 for GPU
+#define GPU 0 //0 for CPU only, 1 for GPU
 #define location "C:/Users/Manganese/Desktop/"
 
 #define NUMBER_OF_CAMERAS 6 //can be a char, since never more than 255 cameras
@@ -83,21 +83,20 @@ int main(int argc, char** argv)
 	for (unsigned char i = 0; i < NUMBER_OF_CAMERAS; ++i){
 		Mat frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
 		frame_array[i].frame_0 = new Mat(frame);//copy frame into heap, return pointer
+		frame_array[i].frame_1 = new Mat(frame);
 		frame_array[i].selected_frame = 0;
 	}
 #endif
 
-	input_videos[top_frame].open(location"top.mp4");
-	input_videos[bottom_frame].open(location"bottom.mp4");
-	input_videos[front_frame].open(location"front.mp4");
-	input_videos[left_frame].open(location"left.mp4");
-	input_videos[right_frame].open(location"right.mp4");
-	input_videos[back_frame].open(location"back.mp4");
+	input_videos[top_frame].open(location"top.avi");
+	input_videos[bottom_frame].open(location"bottom.avi");
+	input_videos[front_frame].open(location"front.avi");
+	input_videos[left_frame].open(location"left.avi");
+	input_videos[right_frame].open(location"right.avi");
+	input_videos[back_frame].open(location"back.avi");
 	namedWindow("");
 
-#if GPU
-	cuda_run();
-#else
+#if !GPU
 	//start n threads, to cover the entire screen area
 	unsigned int per_thread_width = screenWidth / (NUM_THREADS/3);
 	unsigned int per_thread_height = screenHeight / (NUM_THREADS/2);
@@ -136,6 +135,7 @@ int main(int argc, char** argv)
 				input_videos[i].retrieve(next_frame);
 			#if GPU
 				copy_new_frame(i, next_frame.data);
+				cuda_run();
 			#else
 				Mat* next_frame_pointer = new Mat(next_frame);
 				//put new frame in framebuffer and update frame buffer current
@@ -145,12 +145,14 @@ int main(int argc, char** argv)
 						//the mat's refcount will atomicly increment, and this section wont free the image data, but will change the pointer.
 						//so the old thread will still have access to stale, unfreed data.
 						EnterCriticalSection(&update_frame_buffer);
+							frame_array[i].frame_1->release();
 							frame_array[i].frame_1 = next_frame_pointer;//this changes the pointer to a new malloc, non-atomically.
 							frame_array[i].selected_frame = 1;//must be atomic
 						LeaveCriticalSection(&update_frame_buffer);
 						break;
 					case 1:
 						EnterCriticalSection(&update_frame_buffer);
+							frame_array[i].frame_0->release();
 							frame_array[i].frame_0 = next_frame_pointer;
 							frame_array[i].selected_frame = 0;
 						LeaveCriticalSection(&update_frame_buffer);
@@ -160,8 +162,10 @@ int main(int argc, char** argv)
 			}
 		}
 
+	#if GPU
 		read_projected_frame(projected_frame_data);
 		projected_frame = Mat(screenHeight, screenWidth, CV_8UC3, projected_frame_data);
+	#endif
 		imshow("", projected_frame);
 		waitKey(1);
 		//imwrite(location"out.png", projected_frame);
