@@ -808,32 +808,33 @@ Model* screen;
 int texture_width = 1920;
 int texture_height = 1080;
 
-// return true to retry later (e.g. after display lost)
-bool MainLoop(bool retryCreate)
+ovrSession session;
+ovrHmdDesc hmdDesc;
+// Initialize these to nullptr here to handle device lost failures cleanly
+OculusTexture  * pEyeRenderTexture[2] = { nullptr, nullptr };
+DepthBuffer    * pEyeDepthBuffer[2] = { nullptr, nullptr };
+ovrMirrorTexture mirrorTexture = nullptr;
+ovrRecti         eyeRenderViewport[2];// Make the eye render buffers (caution if actual size < requested due to HW limits). 
+ovrResult		 result;
+
+bool isVisible = true;
+long long frameIndex = 0;
+
+// return true for success, false for any failure
+bool SetupMainLoop()
 {
-	// Initialize these to nullptr here to handle device lost failures cleanly
-	ovrMirrorTexture mirrorTexture = nullptr;
-	OculusTexture  * pEyeRenderTexture[2] = { nullptr, nullptr };
-	DepthBuffer    * pEyeDepthBuffer[2] = { nullptr, nullptr };
-	ovrMirrorTextureDesc mirrorDesc = {};
-	bool isVisible = true;
-	long long frameIndex = 0;
-
-	ovrSession session;
 	ovrGraphicsLuid luid;
-	ovrResult result = ovr_Create(&session, &luid);
+	result = ovr_Create(&session, &luid);
 	if (!OVR_SUCCESS(result))
-		return retryCreate;
+		return false;
 
-	ovrHmdDesc hmdDesc = ovr_GetHmdDesc(session);
+	hmdDesc = ovr_GetHmdDesc(session);
 
 	// Setup Device and Graphics
 	// Note: the mirror window can be any size, for this sample we use 1/2 the HMD resolution
-	if (!DIRECTX.InitDevice(hmdDesc.Resolution.w / 2, hmdDesc.Resolution.h / 2, reinterpret_cast<LUID*>(&luid)))
-		goto Done;
-
-	// Make the eye render buffers (caution if actual size < requested due to HW limits). 
-	ovrRecti         eyeRenderViewport[2];
+	if (!DIRECTX.InitDevice(hmdDesc.Resolution.w / 2, hmdDesc.Resolution.h / 2, reinterpret_cast<LUID*>(&luid))){
+		return false;//TODO should we return a retry notice, if the headset is disconnected?
+	}
 
 	for (int eye = 0; eye < 2; ++eye)
 	{
@@ -841,8 +842,8 @@ bool MainLoop(bool retryCreate)
 		pEyeRenderTexture[eye] = new OculusTexture();
 		if (!pEyeRenderTexture[eye]->Init(session, idealSize.w, idealSize.h))
 		{
-			if (retryCreate) goto Done;
-			VALIDATE(false, "Failed to create eye texture.");
+			MessageBoxA(NULL, ("Failed to create eye texture."), "VR Display", MB_ICONERROR | MB_OK);
+			return false;
 		}
 		pEyeDepthBuffer[eye] = new DepthBuffer(DIRECTX.Device, idealSize.w, idealSize.h);
 		eyeRenderViewport[eye].Pos.x = 0;
@@ -850,20 +851,21 @@ bool MainLoop(bool retryCreate)
 		eyeRenderViewport[eye].Size = idealSize;
 		if (!pEyeRenderTexture[eye]->TextureChain)
 		{
-			if (retryCreate) goto Done;
-			VALIDATE(false, "Failed to create texture.");
+			MessageBoxA(NULL, ("Failed to create texture."), "VR Display", MB_ICONERROR | MB_OK);
+			return false;
 		}
 	}
 
 	// Create a mirror to see on the monitor.
+	ovrMirrorTextureDesc mirrorDesc = {};
 	mirrorDesc.Format = OVR_FORMAT_R8G8B8A8_UNORM_SRGB;
 	mirrorDesc.Width = DIRECTX.WinSizeW;
 	mirrorDesc.Height = DIRECTX.WinSizeH;
 	result = ovr_CreateMirrorTextureDX(session, DIRECTX.Device, &mirrorDesc, &mirrorTexture);
 	if (!OVR_SUCCESS(result))
 	{
-		if (retryCreate) goto Done;
-		VALIDATE(false, "Failed to create mirror texture.");
+		MessageBoxA(NULL, ("Failed to create mirror texture."), "VR Display", MB_ICONERROR | MB_OK);
+		return false;
 	}
 
 	// Create the output image, a 2d quad directly in front of the screen
@@ -871,10 +873,10 @@ bool MainLoop(bool retryCreate)
 	TriangleSet twod_quad;
 	twod_quad.AddSingleQuad(-1, -1, -1, 1, 1, -1, 0xff808080);
 	screen = new Model(&twod_quad, XMFLOAT3(0, 0, 0), XMFLOAT4(0, 0, 0, 1),
-				new Material(
-					new Texture(false, 256, 256, Texture::AUTO_WALL)
-				)
-			);
+	new Material(
+	new Texture(false, 256, 256, Texture::AUTO_WALL)
+	)
+	);
 	*/
 	Texture* tex = new Texture(false, texture_width, texture_height);
 	screen = new Model(
@@ -885,88 +887,93 @@ bool MainLoop(bool retryCreate)
 	// FloorLevel will give tracking poses where the floor height is 0
 	ovr_SetTrackingOriginType(session, ovrTrackingOrigin_FloorLevel);
 
-	// Main loop
-	while (DIRECTX.HandleMessages())
+	return true;
+}
+
+bool Main_VR_Render_Loop(){
+	// Call ovr_GetRenderDesc each frame to get the ovrEyeRenderDesc, as the returned values (e.g. HmdToEyeOffset) may change at runtime.
+	ovrEyeRenderDesc eyeRenderDesc[2];
+	eyeRenderDesc[0] = ovr_GetRenderDesc(session, ovrEye_Left, hmdDesc.DefaultEyeFov[0]);
+	eyeRenderDesc[1] = ovr_GetRenderDesc(session, ovrEye_Right, hmdDesc.DefaultEyeFov[1]);
+
+	// Get both eye poses simultaneously, with IPD offset already included. 
+	ovrPosef         EyeRenderPose[2];
+	ovrVector3f      HmdToEyeOffset[2] = { eyeRenderDesc[0].HmdToEyeOffset,
+										   eyeRenderDesc[1].HmdToEyeOffset };
+
+	double sensorSampleTime;    // sensorSampleTime is fed into the layer later
+	ovr_GetEyePoses(session, frameIndex, ovrTrue, HmdToEyeOffset, EyeRenderPose, &sensorSampleTime);
+
+	// Render Scene to Eye Buffers
+	if (isVisible)
 	{
-		// Call ovr_GetRenderDesc each frame to get the ovrEyeRenderDesc, as the returned values (e.g. HmdToEyeOffset) may change at runtime.
-		ovrEyeRenderDesc eyeRenderDesc[2];
-		eyeRenderDesc[0] = ovr_GetRenderDesc(session, ovrEye_Left, hmdDesc.DefaultEyeFov[0]);
-		eyeRenderDesc[1] = ovr_GetRenderDesc(session, ovrEye_Right, hmdDesc.DefaultEyeFov[1]);
-
-		// Get both eye poses simultaneously, with IPD offset already included. 
-		ovrPosef         EyeRenderPose[2];
-		ovrVector3f      HmdToEyeOffset[2] = { eyeRenderDesc[0].HmdToEyeOffset,
-			eyeRenderDesc[1].HmdToEyeOffset };
-
-		double sensorSampleTime;    // sensorSampleTime is fed into the layer later
-		ovr_GetEyePoses(session, frameIndex, ovrTrue, HmdToEyeOffset, EyeRenderPose, &sensorSampleTime);
-
-		// Render Scene to Eye Buffers
-		if (isVisible)
-		{
-			for (int eye = 0; eye < 2; ++eye)
-			{
-				// Clear and set up rendertarget
-				DIRECTX.SetAndClearRenderTarget(pEyeRenderTexture[eye]->GetRTV(), pEyeDepthBuffer[eye]);
-				DIRECTX.SetViewport((float)eyeRenderViewport[eye].Pos.x, (float)eyeRenderViewport[eye].Pos.y,
-					(float)eyeRenderViewport[eye].Size.w, (float)eyeRenderViewport[eye].Size.h);
-
-				//get the matrix projection to the oculus distortion
-				ovrMatrix4f p = ovrMatrix4f_Projection(eyeRenderDesc[eye].Fov, 0.2f, 1000.0f, ovrProjection_None);
-				XMMATRIX proj = XMMatrixSet(p.M[0][0], p.M[1][0], p.M[2][0], p.M[3][0],
-					p.M[0][1], p.M[1][1], p.M[2][1], p.M[3][1],
-					p.M[0][2], p.M[1][2], p.M[2][2], p.M[3][2],
-					p.M[0][3], p.M[1][3], p.M[2][3], p.M[3][3]);
-
-				//render using the projection
-				screen->Render(&proj, 1, 1, 1, 1, true);
-
-				// Commit rendering to the swap chain
-				pEyeRenderTexture[eye]->Commit();
-			}
-		}
-
-		// Initialize our single full screen Fov layer.
-		ovrLayerEyeFov ld = {};
-		ld.Header.Type = ovrLayerType_EyeFov;
-		ld.Header.Flags = 0;
-
 		for (int eye = 0; eye < 2; ++eye)
 		{
-			ld.ColorTexture[eye] = pEyeRenderTexture[eye]->TextureChain;
-			ld.Viewport[eye] = eyeRenderViewport[eye];
-			ld.Fov[eye] = hmdDesc.DefaultEyeFov[eye];
-			ld.RenderPose[eye] = EyeRenderPose[eye];
-			ld.SensorSampleTime = sensorSampleTime;
+			// Clear and set up rendertarget
+			DIRECTX.SetAndClearRenderTarget(pEyeRenderTexture[eye]->GetRTV(), pEyeDepthBuffer[eye]);
+			DIRECTX.SetViewport((float)eyeRenderViewport[eye].Pos.x, (float)eyeRenderViewport[eye].Pos.y,
+				(float)eyeRenderViewport[eye].Size.w, (float)eyeRenderViewport[eye].Size.h);
+
+			//get the matrix projection to the oculus distortion
+			ovrMatrix4f p = ovrMatrix4f_Projection(eyeRenderDesc[eye].Fov, 0.2f, 1000.0f, ovrProjection_None);
+			XMMATRIX proj = XMMatrixSet(p.M[0][0], p.M[1][0], p.M[2][0], p.M[3][0],
+				p.M[0][1], p.M[1][1], p.M[2][1], p.M[3][1],
+				p.M[0][2], p.M[1][2], p.M[2][2], p.M[3][2],
+				p.M[0][3], p.M[1][3], p.M[2][3], p.M[3][3]);
+
+			//render using the projection
+			screen->Render(&proj, 1, 1, 1, 1, true);
+
+			// Commit rendering to the swap chain
+			pEyeRenderTexture[eye]->Commit();
 		}
-
-		ovrLayerHeader* layers = &ld.Header;
-		result = ovr_SubmitFrame(session, frameIndex, nullptr, &layers, 1);
-		// exit the rendering loop if submit returns an error, will retry on ovrError_DisplayLost
-		if (!OVR_SUCCESS(result))
-			goto Done;
-
-		isVisible = (result == ovrSuccess);
-
-		ovrSessionStatus sessionStatus;
-		ovr_GetSessionStatus(session, &sessionStatus);
-		if (sessionStatus.ShouldQuit)
-			goto Done;
-		if (sessionStatus.ShouldRecenter)
-			ovr_RecenterTrackingOrigin(session);
-
-		// Render mirror
-		ID3D11Texture2D* tex = nullptr;
-		ovr_GetMirrorTextureBufferDX(session, mirrorTexture, IID_PPV_ARGS(&tex));
-		DIRECTX.Context->CopyResource(DIRECTX.BackBuffer, tex);
-		tex->Release();
-		DIRECTX.SwapChain->Present(0, 0);
-
-		frameIndex++;
 	}
 
+	// Initialize our single full screen Fov layer.
+	ovrLayerEyeFov ld = {};
+	ld.Header.Type = ovrLayerType_EyeFov;
+	ld.Header.Flags = 0;
+
+	for (int eye = 0; eye < 2; ++eye)
+	{
+		ld.ColorTexture[eye] = pEyeRenderTexture[eye]->TextureChain;
+		ld.Viewport[eye] = eyeRenderViewport[eye];
+		ld.Fov[eye] = hmdDesc.DefaultEyeFov[eye];
+		ld.RenderPose[eye] = EyeRenderPose[eye];
+		ld.SensorSampleTime = sensorSampleTime;
+	}
+
+	ovrLayerHeader* layers = &ld.Header;
+	result = ovr_SubmitFrame(session, frameIndex, nullptr, &layers, 1);
+	// exit the rendering loop if submit returns an error, will retry on ovrError_DisplayLost
+	if (!OVR_SUCCESS(result)){
+		return (result == ovrError_DisplayLost);
+	}
+
+	isVisible = (result == ovrSuccess);
+
+	ovrSessionStatus sessionStatus;
+	ovr_GetSessionStatus(session, &sessionStatus);
+	if (sessionStatus.ShouldQuit){
+		return false;
+	}
+	if (sessionStatus.ShouldRecenter)
+		ovr_RecenterTrackingOrigin(session);
+
+	// Render mirror
+	ID3D11Texture2D* tex = nullptr;
+	ovr_GetMirrorTextureBufferDX(session, mirrorTexture, IID_PPV_ARGS(&tex));
+	DIRECTX.Context->CopyResource(DIRECTX.BackBuffer, tex);
+	tex->Release();
+	DIRECTX.SwapChain->Present(0, 0);
+
+	frameIndex++;
+
+	return true;
+}
+
+void Exit_VR(){
 	// Release resources
-Done:
 	delete screen;
 	if (mirrorTexture)
 		ovr_DestroyMirrorTexture(session, mirrorTexture);
@@ -977,9 +984,6 @@ Done:
 	}
 	DIRECTX.ReleaseDevice();
 	ovr_Destroy(session);
-
-	// Retry on ovrError_DisplayLost
-	return retryCreate || OVR_SUCCESS(result) || (result == ovrError_DisplayLost);
 }
 
 void UpdateTexture(cv::Mat input)
@@ -987,25 +991,19 @@ void UpdateTexture(cv::Mat input)
 	screen->Fill->Tex->SetTextureMat(input);
 }
 
-//-------------------------------------------------------------------------------------
-void Initalize_VR(HINSTANCE hinst)
+bool Initalize_VR(HINSTANCE hinst)
 {
-	// Initializes LibOVR, and the Rift
+	// Initializes LibOVR, the Rift, and the main rendering loop
 	ovrResult result = ovr_Initialize(nullptr);
-	VALIDATE(OVR_SUCCESS(result), "Failed to initialize libOVR.");
-
-	VALIDATE(DIRECTX.InitWindow(hinst, L"VR Display"), "Failed to open window.");
-
-	// false => just fail on any error
-	VALIDATE(MainLoop(false), "Oculus Rift not detected.");
-	while (DIRECTX.HandleMessages())
-	{
-		// true => we'll attempt to retry for ovrError_DisplayLost
-		if (!MainLoop(true))
-			break;
-		// Sleep a bit before retrying to reduce CPU load while the HMD is disconnected
-		Sleep(10);
+	if (!OVR_SUCCESS(result)){
+		MessageBoxA(NULL, "Failed to initialize libOVR.", "VR Display", MB_ICONERROR | MB_OK);
+		return false;
 	}
 
-	ovr_Shutdown();
+	if (!DIRECTX.InitWindow(hinst, L"VR Display")){
+		MessageBoxA(NULL, "Failed to open window.", "VR Display", MB_ICONERROR | MB_OK);
+		return false;
+	}
+
+	return SetupMainLoop();
 }

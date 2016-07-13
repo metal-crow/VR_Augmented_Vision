@@ -95,13 +95,13 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(OPENCV_DIR)\..\..\include;..\VR_Augmented_Vision_GPU</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OPENCV_DIR)\..\..\include;..\VR_Augmented_Vision_GPU;E:\Code Workspace\.external libraries\OculusSDK\LibOVR\Include</AdditionalIncludeDirectories>
       <Optimization>Disabled</Optimization>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(OPENCV_DIR)\lib;$(OutDir)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>VR_Augmented_Vision_GPU.lib;opencv_calib3d310d.lib;opencv_core310d.lib;opencv_features2d310d.lib;opencv_flann310d.lib;opencv_highgui310d.lib;opencv_imgcodecs310d.lib;opencv_imgproc310d.lib;opencv_ml310d.lib;opencv_objdetect310d.lib;opencv_photo310d.lib;opencv_shape310d.lib;opencv_stitching310d.lib;opencv_superres310d.lib;opencv_ts310d.lib;opencv_video310d.lib;opencv_videoio310d.lib;opencv_videostab310d.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <SubSystem>Console</SubSystem>
+      <AdditionalLibraryDirectories>$(OPENCV_DIR)\lib;$(OutDir);E:\Code Workspace\.external libraries\OculusSDK\LibOVR\Lib\Windows\$(Platform)\$(Configuration)\VS2013</AdditionalLibraryDirectories>
+      <AdditionalDependencies>VR_Augmented_Vision_GPU.lib;LibOVR.lib;opencv_calib3d310d.lib;opencv_core310d.lib;opencv_features2d310d.lib;opencv_flann310d.lib;opencv_highgui310d.lib;opencv_imgcodecs310d.lib;opencv_imgproc310d.lib;opencv_ml310d.lib;opencv_objdetect310d.lib;opencv_photo310d.lib;opencv_shape310d.lib;opencv_stitching310d.lib;opencv_superres310d.lib;opencv_ts310d.lib;opencv_video310d.lib;opencv_videoio310d.lib;opencv_videostab310d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
@@ -120,12 +120,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="OculusDisplay.cpp" />
     <ClCompile Include="Source.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\VR_Augmented_Vision_GPU\VR_Augmented_Vision_GPU.vcxproj">
       <Project>{b36743fe-4884-431e-9c7b-f03285e635eb}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="VRdisplay.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

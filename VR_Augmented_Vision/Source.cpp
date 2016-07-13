@@ -7,6 +7,7 @@
 #include "opencv2\core.hpp"
 #include "opencv2\highgui.hpp"
 
+#include "VRdisplay.h"
 #include "kernal.h"
 
 using namespace cv;
@@ -69,8 +70,15 @@ DWORD WINAPI Project_to_Screen(void* input);
 
 #define NUM_THREADS 6
 
-int main(int argc, char** argv)
+int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 {
+	/*Initalize_VR(hinst);
+	Mat img = imread(location"test.png");
+	while(true){
+		Main_VR_Render_Loop();
+		UpdateTexture(img);
+	}*/
+
 	InitializeCriticalSection(&update_frame_buffer);
 
 	//setup the frame buffer and selected frame
