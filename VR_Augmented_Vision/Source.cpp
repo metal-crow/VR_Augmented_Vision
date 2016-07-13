@@ -72,13 +72,7 @@ DWORD WINAPI Project_to_Screen(void* input);
 
 int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 {
-	/*Initalize_VR(hinst);
-	Mat img = imread(location"test.png");
-	while(true){
-		Main_VR_Render_Loop();
-		UpdateTexture(img);
-	}*/
-
+	Initalize_VR(hinst);
 	InitializeCriticalSection(&update_frame_buffer);
 
 	//setup the frame buffer and selected frame
@@ -102,7 +96,7 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 	input_videos[left_frame].open(location"left.avi");
 	input_videos[right_frame].open(location"right.avi");
 	input_videos[back_frame].open(location"back.avi");
-	namedWindow("");
+	//namedWindow("");
 
 #if !GPU
 	//start n threads, to cover the entire screen area
@@ -174,8 +168,10 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 		read_projected_frame(projected_frame_data);
 		projected_frame = Mat(screenHeight, screenWidth, CV_8UC3, projected_frame_data);
 	#endif
-		imshow("", projected_frame);
-		waitKey(1);
+		UpdateTexture(projected_frame);
+		Main_VR_Render_Loop();
+		//imshow("", projected_frame);
+		//waitKey(1);
 		//imwrite(location"out.png", projected_frame);
 	}
 
