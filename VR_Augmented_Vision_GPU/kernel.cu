@@ -72,10 +72,8 @@ void allocate_frames(unsigned char arg_number_of_cameras,
 //updating selected frame must be atomic though
 void copy_new_frame(unsigned char camera, unsigned char* image_data){
 	//since we can't dereference device memory on host code
-	printf("start read");
 	Frame_Info frame;
-	cudaMemcpy(&frame, &frame_array[camera], sizeof(Frame_Info), cudaMemcpyDeviceToHost);
-	printf("camera %d, &frame.frame_0 %p, frame.selected_frame %d\n", camera, frame.frame_0, frame.selected_frame);
+	cudaMemcpy(&frame, &frame_array[camera], sizeof(Frame_Info), cudaMemcpyDeviceToHost);//get addresses in device memory for the images
 
 	switch (frame.selected_frame){
 		case 0:
@@ -106,6 +104,10 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 								  unsigned int frame_width, unsigned int frame_height,
 								  Frame_Info* frame_array, unsigned char* projected_frame)
 {
+	//unsigned int thread_num = threadIdx.x + blockIdx.x * blockDim.x;
+	unsigned int j = blockIdx.x;//TODO pixel row(height)
+	unsigned int i = threadIdx.x;//TODO pixel column(width)
+
 	//http://stackoverflow.com/questions/34250742/converting-a-cubemap-into-equirectangular-panorama
 	//inverse mapping
 
@@ -114,15 +116,13 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 
 	//convert x,y cartesian to u,v polar
 
-	unsigned int j = 0xFFFF0000 & (threadIdx.x + blockIdx.x * blockDim.x);//TODO pixel row(height)
 	//Rows start from the bottom
 	v = 1 - ((double)j / projected_frame_height);
-	theta = v * CUDART_PI_F;
+	theta = v * CUDART_PI;
 
-	unsigned int i = 0x0000FFFF & (threadIdx.x + blockIdx.x * blockDim.x);//TODO pixel column(width)
 	//Columns start from the left
 	u = ((double)i / projected_frame_width);
-	phi = u * 2 * CUDART_PI_F;
+	phi = u * 2 * CUDART_PI;
 
 
 	//convert polar to 3d vector
@@ -131,7 +131,7 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 	y = cos(theta);
 	z = cos(phi) * sin(theta) * -1;
 
-	int xa, ya, za;
+	double xa, ya, za;
 	double a;
 
 	a = fmax(fmax(abs(x), abs(y)), abs(z));
@@ -144,7 +144,7 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 	unsigned char pixel[3];
 	int xPixel, yPixel;
 
-	while (1)
+	//while (1)
 	{
 		if (xa == 1)
 		{
@@ -164,7 +164,9 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 					pixel[2] = frame_array[right_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
 					break;
 			}
-			//pixel = Vec3b(0, 0, 255);//red
+			/*pixel[0] = 0;
+			pixel[1] = 0;
+			pixel[2] = 255;//red*/
 		}
 		else if (xa == -1)
 		{
@@ -184,7 +186,9 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 					pixel[2] = frame_array[left_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
 					break;
 			}
-			//pixel = Vec3b(0, 255, 255);//yellow
+			/*pixel[0] = 0;
+			pixel[1] = 255;
+			pixel[2] = 255;//yellow*/
 		}
 		else if (ya == -1)
 		{
@@ -206,7 +210,9 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 					pixel[2] = frame_array[top_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
 					break;
 			}
-			//pixel = Vec3b(0, 60, 255);//orange
+			/*pixel[0] = 0;
+			pixel[1] = 60;
+			pixel[2] = 255;//orange*/
 		}
 		else if (ya == 1)
 		{
@@ -228,7 +234,9 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 					pixel[2] = frame_array[bottom_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
 					break;
 			}
-			//pixel = Vec3b(255, 0, 0);//blue
+			/*pixel[0] = 255;
+			pixel[1] = 0;
+			pixel[2] = 0;//blue*/
 		}
 		else if (za == 1)
 		{
@@ -248,7 +256,9 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 					pixel[2] = frame_array[front_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
 					break;
 			}
-			//pixel = Vec3b(150, 150, 150);//grey
+			/*pixel[0] = 150;
+			pixel[1] = 150;
+			pixel[2] = 150;//grey*/
 		}
 		else if (za == -1)
 		{
@@ -268,20 +278,22 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 					pixel[2] = frame_array[back_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
 					break;
 			}
-			//pixel = Vec3b(150, 0, 0);//light blue
+			/*pixel[0] = 150;
+			pixel[1] = 0;
+			pixel[2] = 0;//light blue*/
 		}
 		else
 		{
 			printf("Unknown face, something went wrong");
 		}
 
-		projected_frame[(j*i*3)+0] = pixel[0];
-		projected_frame[(j*i*3)+1] = pixel[1];
-		projected_frame[(j*i*3)+2] = pixel[2];
+		projected_frame[((j*projected_frame_width + i) * 3) + 0] = pixel[0];
+		projected_frame[((j*projected_frame_width + i) * 3) + 1] = pixel[1];
+		projected_frame[((j*projected_frame_width + i) * 3) + 2] = pixel[2];
 	}
 }
 
-#define THREADS_PER_BLOCK 512
+#define THREADS_PER_BLOCK 1024
 
 void cuda_run(){
 	cudaError_t cudaStatus;
@@ -292,7 +304,20 @@ void cuda_run(){
 		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
 	}
 
-	Project_to_Screen << <(projected_frame_height * projected_frame_width) / THREADS_PER_BLOCK, THREADS_PER_BLOCK >> >(projected_frame_height, projected_frame_width, frame_width, frame_height, frame_array, projected_frame);
+	Project_to_Screen << <100, 100 >> >(projected_frame_height, projected_frame_width, frame_width, frame_height, frame_array, projected_frame);
+
+	// Check for any errors launching the kernel
+	cudaStatus = cudaGetLastError();
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+	}
+
+	// cudaDeviceSynchronize waits for the kernel to finish, and returns
+	// any errors encountered during the launch.
+	cudaStatus = cudaDeviceSynchronize();
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching kernal!\n", cudaStatus);
+	}
 }
 
 
