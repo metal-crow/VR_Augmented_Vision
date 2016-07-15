@@ -105,8 +105,8 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 								  Frame_Info* frame_array, unsigned char* projected_frame)
 {
 	//unsigned int thread_num = threadIdx.x + blockIdx.x * blockDim.x;
-	unsigned int j = blockIdx.x;//TODO pixel row(height)
-	unsigned int i = threadIdx.x;//TODO pixel column(width)
+	unsigned int j = blockIdx.x;//pixel row(height)
+	unsigned int i = threadIdx.x;//pixel column(width)
 
 	//http://stackoverflow.com/questions/34250742/converting-a-cubemap-into-equirectangular-panorama
 	//inverse mapping
@@ -154,14 +154,14 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 
 			switch (frame_array[right_frame].selected_frame){
 				case 0:
-					pixel[0] = frame_array[right_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 0];
-					pixel[1] = frame_array[right_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 1];
-					pixel[2] = frame_array[right_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					pixel[0] = frame_array[right_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[right_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[right_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 2];
 					break;
 				case 1:
-					pixel[0] = frame_array[right_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 0];
-					pixel[1] = frame_array[right_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 1];
-					pixel[2] = frame_array[right_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					pixel[0] = frame_array[right_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[right_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[right_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 2];
 					break;
 			}
 			/*pixel[0] = 0;
@@ -176,14 +176,14 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 
 			switch (frame_array[left_frame].selected_frame){
 				case 0:
-					pixel[0] = frame_array[left_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 0];
-					pixel[1] = frame_array[left_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 1];
-					pixel[2] = frame_array[left_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					pixel[0] = frame_array[left_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[left_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[left_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 2];
 					break;
 				case 1:
-					pixel[0] = frame_array[left_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 0];
-					pixel[1] = frame_array[left_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 1];
-					pixel[2] = frame_array[left_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					pixel[0] = frame_array[left_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[left_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[left_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 2];
 					break;
 			}
 			/*pixel[0] = 0;
@@ -200,14 +200,14 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 
 			switch (frame_array[top_frame].selected_frame){
 				case 0:
-					pixel[0] = frame_array[top_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 0];
-					pixel[1] = frame_array[top_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 1];
-					pixel[2] = frame_array[top_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					pixel[0] = frame_array[top_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[top_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[top_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 2];
 					break;
 				case 1:
-					pixel[0] = frame_array[top_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 0];
-					pixel[1] = frame_array[top_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 1];
-					pixel[2] = frame_array[top_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					pixel[0] = frame_array[top_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[top_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[top_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 2];
 					break;
 			}
 			/*pixel[0] = 0;
@@ -224,14 +224,14 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 
 			switch (frame_array[bottom_frame].selected_frame){
 				case 0:
-					pixel[0] = frame_array[bottom_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 0];
-					pixel[1] = frame_array[bottom_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 1];
-					pixel[2] = frame_array[bottom_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					pixel[0] = frame_array[bottom_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[bottom_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[bottom_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 2];
 					break;
 				case 1:
-					pixel[0] = frame_array[bottom_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 0];
-					pixel[1] = frame_array[bottom_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 1];
-					pixel[2] = frame_array[bottom_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					pixel[0] = frame_array[bottom_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[bottom_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[bottom_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 2];
 					break;
 			}
 			/*pixel[0] = 255;
@@ -246,14 +246,14 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 
 			switch (frame_array[front_frame].selected_frame){
 				case 0:
-					pixel[0] = frame_array[front_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 0];
-					pixel[1] = frame_array[front_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 1];
-					pixel[2] = frame_array[front_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					pixel[0] = frame_array[front_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[front_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[front_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 2];
 					break;
 				case 1:
-					pixel[0] = frame_array[front_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 0];
-					pixel[1] = frame_array[front_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 1];
-					pixel[2] = frame_array[front_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					pixel[0] = frame_array[front_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[front_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[front_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 2];
 					break;
 			}
 			/*pixel[0] = 150;
@@ -268,14 +268,14 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 
 			switch (frame_array[back_frame].selected_frame){
 				case 0:
-					pixel[0] = frame_array[back_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 0];
-					pixel[1] = frame_array[back_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 1];
-					pixel[2] = frame_array[back_frame].frame_0[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					pixel[0] = frame_array[back_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[back_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[back_frame].frame_0[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 2];
 					break;
 				case 1:
-					pixel[0] = frame_array[back_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 0];
-					pixel[1] = frame_array[back_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 1];
-					pixel[2] = frame_array[back_frame].frame_1[(abs(yPixel)*abs(xPixel) * 3) + 2];
+					pixel[0] = frame_array[back_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 0];
+					pixel[1] = frame_array[back_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 1];
+					pixel[2] = frame_array[back_frame].frame_1[(abs(yPixel)*frame_width * 3 + abs(xPixel) * 3) + 2];
 					break;
 			}
 			/*pixel[0] = 150;
@@ -304,7 +304,7 @@ void cuda_run(){
 		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
 	}
 
-	Project_to_Screen << <100, 100 >> >(projected_frame_height, projected_frame_width, frame_width, frame_height, frame_array, projected_frame);
+	Project_to_Screen << <1000, 768 >> >(projected_frame_height, projected_frame_width, frame_width, frame_height, frame_array, projected_frame);
 
 	// Check for any errors launching the kernel
 	cudaStatus = cudaGetLastError();
