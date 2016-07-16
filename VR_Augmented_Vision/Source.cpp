@@ -13,7 +13,13 @@
 using namespace cv;
 using namespace std;
 
-#define GPU 0 //0 for CPU only, 1 for GPU
+#define GPU 1 //0 for CPU only, 1 for GPU
+#define NUM_THREADS 6
+
+#define USE_VR 1
+
+#define DEBUG_TIME 1
+
 #define location "C:/Users/Manganese/Desktop/"
 
 #define NUMBER_OF_CAMERAS 6 //can be a char, since never more than 255 cameras
@@ -37,7 +43,9 @@ enum camera_namesE{
 	back_frame = 5,
 } camera_names;
 
-CRITICAL_SECTION update_frame_buffer;
+#if !GPU
+	CRITICAL_SECTION update_frame_buffer;
+#endif
 
 typedef struct{
 	Mat* frame_0;//frames used for frame buffer
@@ -66,28 +74,20 @@ typedef struct{
 	unsigned int width;
 	unsigned int height;
 } Thread_Screen;
-DWORD WINAPI Project_to_Screen(void* input);
 
-#define NUM_THREADS 6
+DWORD WINAPI Project_to_Screen(void* input);
 
 int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 {
-	Initalize_VR(hinst);
-	InitializeCriticalSection(&update_frame_buffer);
+	// Allocate a console for this app
+	AllocConsole();
+	AttachConsole(GetCurrentProcessId());
+	freopen("CON", "w", stdout);
 
-	//setup the frame buffer and selected frame
-#if GPU
-	projected_frame_data = (unsigned char*)malloc(screenWidth*screenHeight * 3 * sizeof(unsigned char));
-	allocate_frames(NUMBER_OF_CAMERAS, cubeFaceWidth, cubeFaceHeight, screenWidth, screenHeight);
+#if USE_VR
+	Initalize_VR(hinst, screenWidth, screenHeight);
 #else
-	projected_frame = Mat::zeros(screenHeight, screenWidth, CV_8UC3);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
-
-	for (unsigned char i = 0; i < NUMBER_OF_CAMERAS; ++i){
-		Mat frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
-		frame_array[i].frame_0 = new Mat(frame);//copy frame into heap, return pointer
-		frame_array[i].frame_1 = new Mat(frame);
-		frame_array[i].selected_frame = 0;
-	}
+	namedWindow("");
 #endif
 
 	input_videos[top_frame].open(location"top.avi");
@@ -96,9 +96,25 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 	input_videos[left_frame].open(location"left.avi");
 	input_videos[right_frame].open(location"right.avi");
 	input_videos[back_frame].open(location"back.avi");
-	//namedWindow("");
 
-#if !GPU
+#if GPU
+	//setup the frame buffer and selected frame, + other gpu variables
+	projected_frame_data = (unsigned char*)malloc(screenWidth*screenHeight * 3 * sizeof(unsigned char));
+	if (allocate_frames(NUMBER_OF_CAMERAS, cubeFaceWidth, cubeFaceHeight, screenWidth, screenHeight) != 0){
+		return EXIT_FAILURE;
+	}
+#else
+	InitializeCriticalSection(&update_frame_buffer);//set up mutex
+
+	projected_frame = Mat::zeros(screenHeight, screenWidth, CV_8UC3);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
+
+	for (unsigned char i = 0; i < NUMBER_OF_CAMERAS; ++i){
+		Mat frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
+		frame_array[i].frame_0 = new Mat(frame);//copy frame into heap, return pointer
+		frame_array[i].frame_1 = new Mat(frame);
+		frame_array[i].selected_frame = 0;
+	}
+
 	//start n threads, to cover the entire screen area
 	unsigned int per_thread_width = screenWidth / (NUM_THREADS/3);
 	unsigned int per_thread_height = screenHeight / (NUM_THREADS/2);
@@ -137,7 +153,13 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 				input_videos[i].retrieve(next_frame);
 			#if GPU
 				copy_new_frame(i, next_frame.data);
+					#if DEBUG_TIME
+					long start = clock();
+					#endif
 				cuda_run();
+					#if DEBUG_TIME
+					printf("time:%ul\n",clock()-start);
+					#endif
 			#else
 				Mat* next_frame_pointer = new Mat(next_frame);
 				//put new frame in framebuffer and update frame buffer current
@@ -164,18 +186,20 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 			}
 		}
 
-	#if GPU
-		read_projected_frame(projected_frame_data);
-		projected_frame = Mat(screenHeight, screenWidth, CV_8UC3, projected_frame_data);
-	#endif
-		UpdateTexture(projected_frame);
-		Main_VR_Render_Loop();
-		//imshow("", projected_frame);
-		//waitKey(1);
-		//imwrite(location"out.png", projected_frame);
+		#if GPU
+			read_projected_frame(projected_frame_data);
+			projected_frame = Mat(screenHeight, screenWidth, CV_8UC3, projected_frame_data);
+		#endif
+		#if USE_VR
+			UpdateTexture(projected_frame);
+			Main_VR_Render_Loop();
+		#else
+			imshow("", projected_frame);
+			waitKey(1);
+		#endif
 	}
 
-	return 0;
+	return EXIT_SUCCESS;
 }
 
 DWORD WINAPI Project_to_Screen(void* input){
@@ -183,7 +207,6 @@ DWORD WINAPI Project_to_Screen(void* input){
 	while (1){
 		//http://stackoverflow.com/questions/34250742/converting-a-cubemap-into-equirectangular-panorama
 		//inverse mapping
-		//can do better with gpu shaders
 
 		double u, v; //Normalised texture coordinates, from 0 to 1, starting at lower left corner
 		double phi, theta; //Polar coordinates
