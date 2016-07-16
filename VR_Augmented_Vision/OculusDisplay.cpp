@@ -805,8 +805,8 @@ struct OculusTexture
 
 
 Model* screen;
-int texture_width = 1920;
-int texture_height = 1080;
+int texture_width;
+int texture_height;
 
 ovrSession session;
 ovrHmdDesc hmdDesc;
@@ -932,7 +932,7 @@ bool Main_VR_Render_Loop(){
 	// Initialize our single full screen Fov layer.
 	ovrLayerEyeFov ld = {};
 	ld.Header.Type = ovrLayerType_EyeFov;
-	ld.Header.Flags = 0;
+	ld.Header.Flags = 0;// ovrLayerFlag_HeadLocked | ovrLayerFlag_HighQuality;
 
 	for (int eye = 0; eye < 2; ++eye)
 	{
@@ -991,8 +991,11 @@ void UpdateTexture(cv::Mat input)
 	screen->Fill->Tex->SetTextureMat(input);
 }
 
-bool Initalize_VR(HINSTANCE hinst)
+bool Initalize_VR(HINSTANCE hinst, unsigned int output_width, unsigned int output_height)
 {
+	texture_width = output_width;
+	texture_height = output_height;
+
 	// Initializes LibOVR, the Rift, and the main rendering loop
 	ovrResult result = ovr_Initialize(nullptr);
 	if (!OVR_SUCCESS(result)){

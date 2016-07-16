@@ -6,7 +6,7 @@
 
 void UpdateTexture(cv::Mat input);
 
-bool Initalize_VR(HINSTANCE hinst);
+bool Initalize_VR(HINSTANCE hinst, unsigned int output_width, unsigned int output_height);
 
 bool Main_VR_Render_Loop();
 
