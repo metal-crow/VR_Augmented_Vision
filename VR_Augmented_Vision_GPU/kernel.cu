@@ -30,9 +30,15 @@ typedef struct{
 
 Frame_Info* frame_array;//pointer stored on host memory, which points to device memory
 
+#define THREADS_PER_BLOCK_MAX 1024 //note this this usually can't be used since the number of available registers is usually the lower bound
+#define THREADS_PER_BLOCK_USED 512
+
+#define BLOCKS_MAX 65535 
+unsigned int BLOCKS_USED;
+
 //allocate space for the array of images, and the buffer images for each camera, and the final projected image
 //also set some global constants
-void allocate_frames(unsigned char arg_number_of_cameras, 
+int allocate_frames(unsigned char arg_number_of_cameras, 
 					 unsigned int arg_frame_width, unsigned int arg_frame_height, 
 					 unsigned int arg_projected_frame_width, unsigned int arg_projected_frame_height)
 {
@@ -45,7 +51,7 @@ void allocate_frames(unsigned char arg_number_of_cameras,
 	
 	cudaError_t cudaStatus = cudaMalloc(&frame_array, arg_number_of_cameras*sizeof(Frame_Info));//allocate space for frame array
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed!");
+		printf("cudaMalloc failed!");
 	}
 
 	for (unsigned char i = 0; i < arg_number_of_cameras; ++i){
@@ -57,14 +63,23 @@ void allocate_frames(unsigned char arg_number_of_cameras,
 		//copy over local frame info to device memory
 		cudaStatus = cudaMemcpy(&frame_array[i], &camera_frame_info, sizeof(Frame_Info), cudaMemcpyHostToDevice);
 		if (cudaStatus != cudaSuccess) {
-			fprintf(stderr, "cudaMalloc failed!");
+			printf("cudaMalloc failed!");
 		}
 	}
 
 	cudaStatus = cudaMalloc(&projected_frame, arg_projected_frame_width*arg_projected_frame_height * 3 * sizeof(unsigned char));//allocate the projected frame
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed!");
+		printf("cudaMalloc failed!");
 	}
+
+	//compute the number of blocks to assign 1 pixel per thread
+	BLOCKS_USED = (projected_frame_width*projected_frame_height) / THREADS_PER_BLOCK_USED;
+	if (BLOCKS_USED > BLOCKS_MAX){
+		printf("Require %d blocks, greater than BLOCKS_MAX.\n", BLOCKS_USED);//TODO in this case, each thread should do multiple pixels
+		return 1;
+	}
+
+	return 0;
 }
 
 //given a pointer to an image on the host memory, copy to the currently unused frame buffer for that frame in the device memory, and update the selected frame indicator
@@ -99,14 +114,13 @@ void read_projected_frame(unsigned char*  host_projection_frame){
 
 //this is the function that is parralelized
 //each handles a single pixel on the projection screen
-//TODO might have to be more like 4 pixels? Test various numbers
 __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned int projected_frame_width, 
 								  unsigned int frame_width, unsigned int frame_height,
 								  Frame_Info* frame_array, unsigned char* projected_frame)
 {
-	//unsigned int thread_num = threadIdx.x + blockIdx.x * blockDim.x;
-	unsigned int j = blockIdx.x;//pixel row(height)
-	unsigned int i = threadIdx.x;//pixel column(width)
+	unsigned int thread_num = threadIdx.x + blockIdx.x * blockDim.x;
+	unsigned int j = thread_num / projected_frame_height;//pixel row(height)
+	unsigned int i = thread_num % projected_frame_width;//pixel column(width)
 
 	//http://stackoverflow.com/questions/34250742/converting-a-cubemap-into-equirectangular-panorama
 	//inverse mapping
@@ -293,8 +307,6 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 	}
 }
 
-#define THREADS_PER_BLOCK 1024
-
 void cuda_run(){
 	cudaError_t cudaStatus;
 
@@ -304,19 +316,19 @@ void cuda_run(){
 		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
 	}
 
-	Project_to_Screen << <1000, 768 >> >(projected_frame_height, projected_frame_width, frame_width, frame_height, frame_array, projected_frame);
+	Project_to_Screen << <BLOCKS_USED, THREADS_PER_BLOCK_USED >> >(projected_frame_height, projected_frame_width, frame_width, frame_height, frame_array, projected_frame);
 
 	// Check for any errors launching the kernel
 	cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+		printf("kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
 	}
 
 	// cudaDeviceSynchronize waits for the kernel to finish, and returns
 	// any errors encountered during the launch.
 	cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching kernal!\n", cudaStatus);
+		printf("cudaDeviceSynchronize returned error code %d after launching kernal!\n", cudaStatus);
 	}
 }
 
