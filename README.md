@@ -1,2 +1,2 @@
-Get gpu working
-get projection to oculus rift working
+CPU can, in theory, have less latency than GPU due to the GPU needing to be syncronized with the main thread (load images, call gpu, wait), instead of the asyncroncous cpu (simultainous and ongoing image loading and converting)
+However GPU has less latency most of the time because its much faster at converting the image

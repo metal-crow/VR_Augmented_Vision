@@ -16,7 +16,7 @@ using namespace std;
 #define GPU 1 //0 for CPU only, 1 for GPU
 #define NUM_THREADS 6
 
-#define USE_VR 1
+#define USE_VR 0
 
 #define DEBUG_TIME 1
 
@@ -152,14 +152,7 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 				Mat next_frame;
 				input_videos[i].retrieve(next_frame);
 			#if GPU
-				copy_new_frame(i, next_frame.data);
-					#if DEBUG_TIME
-					long start = clock();
-					#endif
-				cuda_run();
-					#if DEBUG_TIME
-					printf("time:%ul\n",clock()-start);
-					#endif
+				copy_new_frame(i, next_frame.data);//send frame to device memory
 			#else
 				Mat* next_frame_pointer = new Mat(next_frame);
 				//put new frame in framebuffer and update frame buffer current
@@ -187,6 +180,14 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 		}
 
 		#if GPU
+			#if DEBUG_TIME
+				long start = clock();
+			#endif
+				cuda_run();//run gpu projection
+			#if DEBUG_TIME
+				printf("time:%ld\n", clock() - start);
+			#endif
+
 			read_projected_frame(projected_frame_data);
 			projected_frame = Mat(screenHeight, screenWidth, CV_8UC3, projected_frame_data);
 		#endif
