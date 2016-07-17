@@ -119,7 +119,7 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 								  Frame_Info* frame_array, unsigned char* projected_frame)
 {
 	unsigned int thread_num = threadIdx.x + blockIdx.x * blockDim.x;
-	unsigned int j = thread_num / projected_frame_height;//pixel row(height)
+	unsigned int j = thread_num / projected_frame_width;//pixel row(height)
 	unsigned int i = thread_num % projected_frame_width;//pixel column(width)
 
 	//http://stackoverflow.com/questions/34250742/converting-a-cubemap-into-equirectangular-panorama
@@ -186,6 +186,9 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 		{
 			//Left
 			xPixel = (int)((((za + 1.0) / 2.0)) * frame_width);
+			if (xPixel >= frame_width){
+				xPixel = frame_width - 1;
+			}
 			yPixel = (int)((((ya + 1.0) / 2.0)) * frame_height);
 
 			switch (frame_array[left_frame].selected_frame){
