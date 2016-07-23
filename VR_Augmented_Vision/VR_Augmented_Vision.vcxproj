@@ -120,6 +120,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CPURender.cpp" />
+    <ClCompile Include="GPURender.cpp" />
     <ClCompile Include="OculusDisplay.cpp" />
     <ClCompile Include="Source.cpp" />
   </ItemGroup>
@@ -129,6 +131,9 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CPURender.h" />
+    <ClInclude Include="Source.h" />
+    <ClInclude Include="GPURender.h" />
     <ClInclude Include="VRdisplay.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
