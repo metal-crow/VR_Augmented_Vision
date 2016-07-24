@@ -29,16 +29,16 @@ int GPU_Render(HINSTANCE hinst)
 
 		printf("computed gpu:%ld\n", clock() - start);
 
-		//2 ms
+		//12 ms ???
 		read_projected_frame(projected_frame_data);
 
 		printf("read projection:%ld\n", clock() - start);
 
 		projected_frame = Mat(screenHeight, screenWidth, CV_8UC4, projected_frame_data);
 		#if USE_VR
-			UpdateTexture(projected_frame);//15 ms TODO
+			UpdateTexture(projected_frame);//2 ms
 			printf("update texture:%ld\n", clock() - start);
-			Main_VR_Render_Loop();//5 ms
+			Main_VR_Render_Loop();//5 ms TODO
 		#else
 			imshow("", projected_frame);
 			waitKey(1);

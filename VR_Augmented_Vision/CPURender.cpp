@@ -17,7 +17,7 @@ int CPU_Render(HINSTANCE hinst)
 {
 	InitializeCriticalSection(&update_frame_buffer);//set up mutex
 
-	projected_frame = Mat::zeros(screenHeight, screenWidth, CV_8UC3);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
+	projected_frame = Mat::zeros(screenHeight, screenWidth, CV_8UC4);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
 
 	for (unsigned char i = 0; i < NUMBER_OF_CAMERAS; ++i){
 		Mat frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
@@ -98,7 +98,6 @@ int CPU_Render(HINSTANCE hinst)
 		#if DEBUG_TIME
 			printf("time:%ld\n", clock() - start);
 		#endif
-		Sleep(100);
 	}
 
 	return EXIT_SUCCESS;
@@ -251,7 +250,7 @@ DWORD WINAPI Project_to_Screen(void* input){
 					printf("Unknown face, something went wrong");
 				}
 
-				projected_frame.at<Vec3b>(j, i) = pixel;
+				projected_frame.at<Vec4b>(j, i) = Vec4b{ pixel[2], pixel[1], pixel[0], 0xFF };
 			}
 		}
 	}
