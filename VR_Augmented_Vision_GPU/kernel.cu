@@ -42,6 +42,13 @@ int allocate_frames(unsigned char arg_number_of_cameras,
 					 unsigned int arg_frame_width, unsigned int arg_frame_height, 
 					 unsigned int arg_projected_frame_width, unsigned int arg_projected_frame_height)
 {
+	// Choose which GPU to run on, change this on a multi-GPU system.
+	cudaError_t cudaStatus = cudaSetDevice(0);
+	if (cudaStatus != cudaSuccess) {
+		printf("cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
+		return 1;
+	}
+
 	//save these variables
 	number_of_cameras = arg_number_of_cameras;
 	frame_width = arg_frame_width;
@@ -49,9 +56,10 @@ int allocate_frames(unsigned char arg_number_of_cameras,
 	projected_frame_width = arg_projected_frame_width;
 	projected_frame_height = arg_projected_frame_height;
 	
-	cudaError_t cudaStatus = cudaMalloc(&frame_array, arg_number_of_cameras*sizeof(Frame_Info));//allocate space for frame array
+	cudaStatus = cudaMalloc(&frame_array, arg_number_of_cameras*sizeof(Frame_Info));//allocate space for frame array
 	if (cudaStatus != cudaSuccess) {
 		printf("cudaMalloc failed!");
+		return 1;
 	}
 
 	for (unsigned char i = 0; i < arg_number_of_cameras; ++i){
@@ -64,12 +72,14 @@ int allocate_frames(unsigned char arg_number_of_cameras,
 		cudaStatus = cudaMemcpy(&frame_array[i], &camera_frame_info, sizeof(Frame_Info), cudaMemcpyHostToDevice);
 		if (cudaStatus != cudaSuccess) {
 			printf("cudaMalloc failed!");
+			return 1;
 		}
 	}
 
 	cudaStatus = cudaMalloc(&projected_frame, arg_projected_frame_width*arg_projected_frame_height * 3 * sizeof(unsigned char));//allocate the projected frame
 	if (cudaStatus != cudaSuccess) {
 		printf("cudaMalloc failed!");
+		return 1;
 	}
 
 	//compute the number of blocks to assign 1 pixel per thread
@@ -311,19 +321,11 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 }
 
 void cuda_run(){
-	cudaError_t cudaStatus;
-
-	// Choose which GPU to run on, change this on a multi-GPU system.
-	cudaStatus = cudaSetDevice(0);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
-	}
-
 	Project_to_Screen << <BLOCKS_USED, THREADS_PER_BLOCK_USED >> >(projected_frame_height, projected_frame_width, frame_width, frame_height, frame_array, projected_frame);
 
 	//fuck error checking and blocking, WE'RE GOING FAST
 	// Check for any errors launching the kernel
-	/*cudaStatus = cudaGetLastError();
+	/*cudaError_t cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
 		printf("kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
 	}
