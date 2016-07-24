@@ -13,14 +13,14 @@ unsigned int frame_width, frame_height;
 unsigned int projected_frame_width, projected_frame_height;
 unsigned char* projected_frame;//dont need a second buffer because memcpy is thread agnostic, so worst case a single pixel is corrupted
 
-enum camera_namesE{
+enum camera_names{
 	top_frame = 0,
 	bottom_frame = 1,
 	front_frame = 2,
 	left_frame = 3,
 	right_frame = 4,
 	back_frame = 5,
-} camera_names;
+};
 
 typedef struct{
 	unsigned char* frame_0;//these two serve as frame buffers
