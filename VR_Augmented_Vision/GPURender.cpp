@@ -9,7 +9,7 @@ DWORD WINAPI Grab_Camera_Frame(void* camera_num_voidp);
 int GPU_Render(HINSTANCE hinst)
 {
 	//setup the frame buffer and selected frame, + other gpu variables
-	projected_frame_data = (unsigned char*)malloc(screenWidth*screenHeight * 3 * sizeof(unsigned char));
+	projected_frame_data = (unsigned char*)malloc(screenWidth*screenHeight * 4 * sizeof(unsigned char));
 	if (allocate_frames(NUMBER_OF_CAMERAS, cubeFaceWidth, cubeFaceHeight, screenWidth, screenHeight) != 0){
 		return EXIT_FAILURE;
 	}
@@ -34,7 +34,7 @@ int GPU_Render(HINSTANCE hinst)
 
 		printf("read projection:%ld\n", clock() - start);
 
-		projected_frame = Mat(screenHeight, screenWidth, CV_8UC3, projected_frame_data);
+		projected_frame = Mat(screenHeight, screenWidth, CV_8UC4, projected_frame_data);
 		#if USE_VR
 			UpdateTexture(projected_frame);//15 ms TODO
 			printf("update texture:%ld\n", clock() - start);
