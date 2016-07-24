@@ -21,6 +21,3 @@ However GPU has less latency most of the time because its much faster at convert
 TODO:  
 fix issue with when you move your head, oculus has to snap it/or the 2d quad back, instead of just ignoring any movement  
 -want the quad to be in a fixed position, and head movement/rotation to be ignored  
--or could just redraw quad at new head orientation every frame. no slowdown in theory  
-  
-when in gpu rendering, assign each camera do its mat-to-device-copy in its own thread  
