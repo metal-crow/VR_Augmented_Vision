@@ -24,7 +24,7 @@ int GPU_Render(HINSTANCE hinst)
 			long start = clock();
 		#endif
 
-		//15 ms
+		//~1 ms
 		cuda_run();//run gpu projection
 
 		printf("computed gpu:%ld\n", clock() - start);

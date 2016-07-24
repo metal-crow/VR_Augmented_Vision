@@ -321,8 +321,9 @@ void cuda_run(){
 
 	Project_to_Screen << <BLOCKS_USED, THREADS_PER_BLOCK_USED >> >(projected_frame_height, projected_frame_width, frame_width, frame_height, frame_array, projected_frame);
 
+	//fuck error checking and blocking, WE'RE GOING FAST
 	// Check for any errors launching the kernel
-	cudaStatus = cudaGetLastError();
+	/*cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
 		printf("kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
 	}
@@ -332,5 +333,5 @@ void cuda_run(){
 	cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
 		printf("cudaDeviceSynchronize returned error code %d after launching kernal!\n", cudaStatus);
-	}
+	}*/
 }
