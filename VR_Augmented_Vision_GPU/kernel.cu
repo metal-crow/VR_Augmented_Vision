@@ -314,7 +314,7 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 			printf("Unknown face, something went wrong");
 		}
 
-		//converting to ARGB from BGR, with max A
+		//converting to RGBA from BGR, with max A
 		projected_frame[((j*projected_frame_width + i) * 4) + 0] = pixel[2];
 		projected_frame[((j*projected_frame_width + i) * 4) + 1] = pixel[1];
 		projected_frame[((j*projected_frame_width + i) * 4) + 2] = pixel[0];

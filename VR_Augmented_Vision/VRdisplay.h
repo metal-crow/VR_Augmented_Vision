@@ -4,7 +4,7 @@
 #include <Windows.h>
 #include "opencv2\core.hpp"
 
-//This requires a ARGB input mat
+//This requires a RGBA input mat
 void UpdateTexture(cv::Mat input);
 
 bool Initalize_VR(HINSTANCE hinst, unsigned int output_width, unsigned int output_height);
