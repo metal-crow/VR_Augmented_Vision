@@ -4,6 +4,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 12.0.31101.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VR_Augmented_Vision", "VR_Augmented_Vision\VR_Augmented_Vision.vcxproj", "{2481034E-ADBF-4E00-9EF8-80077EDE9CF3}"
+	ProjectSection(ProjectDependencies) = postProject
+		{B36743FE-4884-431E-9C7B-F03285E635EB} = {B36743FE-4884-431E-9C7B-F03285E635EB}
+	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{E7195E3B-182B-457F-932A-645ECAA174C5}"
 	ProjectSection(SolutionItems) = preProject
