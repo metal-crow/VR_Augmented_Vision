@@ -1,8 +1,14 @@
 #include "Source.h"
 #include "kernal.h"
 
-//in between step for the gpu to copy the projected frame datatto before its converted to a mat on the host
+//in between step for the gpu to copy the projected frame datat to before its converted to a mat on the host
 unsigned char* projected_frame_data;
+
+//set by the camera threads so we don't unnecicarily start the gpu every main loop tick with old data
+//this allows faster reaction for an actual new frame, instead of if a new frame comes in just as the gpu finishes. Then we'd have to wait
+//this would normally be bad practice but a)ms visual c++ compiler may make this atomic b)it controls an if statement. worst case we drop a frame
+//TODO "why not a Condition Variable?" slower (by enough to be significant?), and we don't have to worry about main spinlocking since we only create as many threads as we have cpus(do we?)
+volatile bool new_frame_grabbed = false;
 
 DWORD WINAPI Grab_Camera_Frame(void* camera_num_voidp);
 
@@ -24,28 +30,32 @@ int GPU_Render(HINSTANCE hinst)
 			long start = clock();
 		#endif
 
-		//~<1 ms
-		cuda_run();//run gpu projection
+		if (new_frame_grabbed){
+			new_frame_grabbed = false;
 
-		printf("computed gpu:%ld\n", clock() - start);
+			//~<1 ms
+			cuda_run();//run gpu projection
 
-		//12 ms ???
-		read_projected_frame(projected_frame_data);
+			printf("computed gpu:%ld\n", clock() - start);
 
-		printf("read projection:%ld\n", clock() - start);
+			//12 ms TODO
+			read_projected_frame(projected_frame_data);
 
-		projected_frame = Mat(screenHeight, screenWidth, CV_8UC4, projected_frame_data);
-		#if USE_VR
-			UpdateTexture(projected_frame);//2 ms
-			printf("update texture:%ld\n", clock() - start);
-			Main_VR_Render_Loop();//5 ms TODO
-		#else
-			imshow("", projected_frame);
-			waitKey(1);
-		#endif
-		#if DEBUG_TIME
-			printf("send to oculus:%ld\n", clock() - start);
-		#endif
+			printf("read projection:%ld\n", clock() - start);
+
+			projected_frame = Mat(screenHeight, screenWidth, CV_8UC4, projected_frame_data);
+			#if USE_VR
+				UpdateTexture(projected_frame);//2 ms
+				printf("update texture:%ld\n", clock() - start);
+				Main_VR_Render_Loop();//5 ms TODO
+			#else
+				imshow("", projected_frame);
+				waitKey(1);
+			#endif
+			#if DEBUG_TIME
+				printf("send to oculus:%ld\n", clock() - start);
+			#endif
+		}
 	}
 
 	return EXIT_SUCCESS;
@@ -65,6 +75,7 @@ DWORD WINAPI Grab_Camera_Frame(void* camera_num_voidp){
 			Mat next_frame;
 			input_videos[camera_num].retrieve(next_frame);
 			copy_new_frame(camera_num, next_frame.data);//send frame to device memory
+			new_frame_grabbed = true;
 		}
 		//we don't want to 100% cpu, and know that a camera wont have a new frame instantly available, so yield
 		Sleep(10);
