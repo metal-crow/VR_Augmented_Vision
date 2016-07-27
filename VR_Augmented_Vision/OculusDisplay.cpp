@@ -406,7 +406,7 @@ struct Texture
 		Release(Tex);
 	}
 
-	void FillTexture(uint32_t * pix)
+	/*void FillTexture(uint32_t * pix)
 	{
 		//Make local ones, because will be reducing them
 		int sizeW = SizeW;
@@ -429,25 +429,10 @@ struct Texture
 			}
 			sizeW >>= 1;  sizeH >>= 1;
 		}
-	}
+	}*/
 
 	void SetTextureMat(cv::Mat input){
-		uint32_t * pix = (uint32_t *)malloc(sizeof(uint32_t) *  SizeW * SizeH);
-
-		int tex_i = 0;
-		unsigned int mat_i = 0;
-		while (tex_i < SizeW * SizeH){
-			//each pixel is ARGB
-			pix[tex_i] = 0xff000000 |
-				input.data[mat_i] << (8 * 2) |
-				input.data[mat_i + 1] << (8 * 1) |
-				input.data[mat_i + 2] << (8 * 0);
-			tex_i++;
-			mat_i += 3;
-		}
-
-		FillTexture(pix);
-		free(pix);
+		DIRECTX.Context->UpdateSubresource(Tex, 0, NULL, (unsigned int *)input.data, SizeW * 4, SizeH * SizeW * 4);
 	}
 };
 
