@@ -31,26 +31,27 @@ int GPU_Render(HINSTANCE hinst)
 
 			cuda_run();//async run gpu projection
 
+			read_projected_frame();//async copy from device to host memory
+
 			#if DEBUG_TIME
 				long start = clock();
 			#endif
 
-			//12 ms TODO
-			read_projected_frame();
-
-			printf("read projection:%ld\n", clock() - start);
-
 			projected_frame = Mat(screenHeight, screenWidth, CV_8UC4, projected_frame_data);
 			#if USE_VR
 				UpdateTexture(projected_frame);//2 ms
-				//printf("update texture:%ld\n", clock() - start);
-				Main_VR_Render_Loop();//5 ms TODO
+				#if DEBUG_TIME
+					printf("update texture:%ld\n", clock() - start);
+				#endif
+				Main_VR_Render_Loop();//5 ms, with wait if before 11 since last update
 			#else
 				imshow("", projected_frame);
 				waitKey(1);
 			#endif
 			
-			//printf("send to oculus:%ld\n", clock() - start);
+			#if DEBUG_TIME
+				printf("send to oculus:%ld\n", clock() - start);
+			#endif
 		}
 	}
 
