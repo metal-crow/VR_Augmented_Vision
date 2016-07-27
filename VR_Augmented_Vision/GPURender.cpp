@@ -15,8 +15,8 @@ DWORD WINAPI Grab_Camera_Frame(void* camera_num_voidp);
 int GPU_Render(HINSTANCE hinst)
 {
 	//setup the frame buffer and selected frame, + other gpu variables
-	projected_frame_data = (unsigned char*)malloc(screenWidth*screenHeight * 4 * sizeof(unsigned char));
-	if (allocate_frames(NUMBER_OF_CAMERAS, cubeFaceWidth, cubeFaceHeight, screenWidth, screenHeight) != 0){
+	projected_frame_data = allocate_frames(NUMBER_OF_CAMERAS, cubeFaceWidth, cubeFaceHeight, screenWidth, screenHeight);
+	if (projected_frame_data == NULL){
 		return EXIT_FAILURE;
 	}
 
@@ -26,35 +26,31 @@ int GPU_Render(HINSTANCE hinst)
 	}
 
 	while (1){
-		#if DEBUG_TIME
-			long start = clock();
-		#endif
-
 		if (new_frame_grabbed){
 			new_frame_grabbed = false;
 
-			//~<1 ms
-			cuda_run();//run gpu projection
+			cuda_run();//async run gpu projection
 
-			printf("computed gpu:%ld\n", clock() - start);
+			#if DEBUG_TIME
+				long start = clock();
+			#endif
 
 			//12 ms TODO
-			read_projected_frame(projected_frame_data);
+			read_projected_frame();
 
 			printf("read projection:%ld\n", clock() - start);
 
 			projected_frame = Mat(screenHeight, screenWidth, CV_8UC4, projected_frame_data);
 			#if USE_VR
 				UpdateTexture(projected_frame);//2 ms
-				printf("update texture:%ld\n", clock() - start);
+				//printf("update texture:%ld\n", clock() - start);
 				Main_VR_Render_Loop();//5 ms TODO
 			#else
 				imshow("", projected_frame);
 				waitKey(1);
 			#endif
-			#if DEBUG_TIME
-				printf("send to oculus:%ld\n", clock() - start);
-			#endif
+			
+			//printf("send to oculus:%ld\n", clock() - start);
 		}
 	}
 

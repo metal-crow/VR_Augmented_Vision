@@ -11,6 +11,7 @@ unsigned char number_of_cameras;
 unsigned int frame_width, frame_height;
 
 unsigned int projected_frame_width, projected_frame_height;
+unsigned char* projected_frame_host;//the host's copy of the projected frame. pinned memory
 unsigned char* projected_frame;//dont need a second buffer because memcpy is thread agnostic, so worst case a single pixel is corrupted
 
 enum camera_names{
@@ -38,15 +39,16 @@ unsigned int BLOCKS_USED;
 
 //allocate space for the array of images, and the buffer images for each camera, and the final projected image
 //also set some global constants
-int allocate_frames(unsigned char arg_number_of_cameras, 
+//return the pointer to the host's copy of projected frame, or NULL for any error
+unsigned char* allocate_frames(unsigned char arg_number_of_cameras, 
 					 unsigned int arg_frame_width, unsigned int arg_frame_height, 
 					 unsigned int arg_projected_frame_width, unsigned int arg_projected_frame_height)
 {
 	// Choose which GPU to run on, change this on a multi-GPU system.
 	cudaError_t cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
-		printf("cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
-		return 1;
+		printf("cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?\n");
+		return NULL;
 	}
 
 	//save these variables
@@ -58,8 +60,8 @@ int allocate_frames(unsigned char arg_number_of_cameras,
 	
 	cudaStatus = cudaMalloc(&frame_array, arg_number_of_cameras*sizeof(Frame_Info));//allocate space for frame array
 	if (cudaStatus != cudaSuccess) {
-		printf("cudaMalloc failed!");
-		return 1;
+		printf("Failed to malloc frame_array!\n");
+		return NULL;
 	}
 
 	for (unsigned char i = 0; i < arg_number_of_cameras; ++i){
@@ -71,25 +73,30 @@ int allocate_frames(unsigned char arg_number_of_cameras,
 		//copy over local frame info to device memory
 		cudaStatus = cudaMemcpy(&frame_array[i], &camera_frame_info, sizeof(Frame_Info), cudaMemcpyHostToDevice);
 		if (cudaStatus != cudaSuccess) {
-			printf("cudaMalloc failed!");
-			return 1;
+			printf("Failed to copy Frame_Info!\n");
+			return NULL;
 		}
 	}
 
-	cudaStatus = cudaMalloc(&projected_frame, arg_projected_frame_width*arg_projected_frame_height * 4 * sizeof(unsigned char));//allocate the projected frame
+	cudaStatus = cudaMallocHost(&projected_frame_host, arg_projected_frame_width*arg_projected_frame_height * 4 * sizeof(unsigned char));//allocate the host's projected frame as pinned memory
 	if (cudaStatus != cudaSuccess) {
-		printf("cudaMalloc failed!");
-		return 1;
+		printf("Failed to malloc projected_frame_host!\n");
+		return NULL;
+	}
+	cudaStatus = cudaMalloc(&projected_frame, arg_projected_frame_width*arg_projected_frame_height * 4 * sizeof(unsigned char));//allocate the gpu's projected frame
+	if (cudaStatus != cudaSuccess) {
+		printf("Failed to malloc projected_frame!\n");
+		return NULL;
 	}
 
 	//compute the number of blocks to assign 1 pixel per thread
 	BLOCKS_USED = (projected_frame_width*projected_frame_height) / THREADS_PER_BLOCK_USED;
 	if (BLOCKS_USED > BLOCKS_MAX){
 		printf("Require %d blocks, greater than BLOCKS_MAX.\n", BLOCKS_USED);//TODO in this case, each thread should do multiple pixels
-		return 1;
+		return NULL;
 	}
 
-	return 0;
+	return projected_frame_host;
 }
 
 //given a pointer to an image on the host memory, copy to the currently unused frame buffer for that frame in the device memory, and update the selected frame indicator
@@ -115,8 +122,9 @@ void copy_new_frame(unsigned char camera, unsigned char* image_data){
 }
 
 //copy the generated projected frame stored on the gpu to the cpu memory
-void read_projected_frame(unsigned char*  host_projection_frame){
-	cudaError_t cudaStatus = cudaMemcpy(host_projection_frame, projected_frame, projected_frame_width*projected_frame_height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost);
+//use pinned host memory, non-waited async copy (because like kernal, longer to check if copied than to actually copy), and multiple streams (in form of memcpy2D)
+void read_projected_frame(){
+	cudaError_t cudaStatus = cudaMemcpy2DAsync(projected_frame_host, projected_frame_width*sizeof(unsigned char) * 4, projected_frame, projected_frame_width*sizeof(unsigned char) * 4, projected_frame_width*sizeof(unsigned char) * 4, projected_frame_height, cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
 		printf("cudaMalloc failed!");
 	}
@@ -326,6 +334,8 @@ void cuda_run(){
 	Project_to_Screen << <BLOCKS_USED, THREADS_PER_BLOCK_USED >> >(projected_frame_height, projected_frame_width, frame_width, frame_height, frame_array, projected_frame);
 
 	//fuck error checking and blocking, WE'RE GOING FAST
+	//we actually don't need it because it takes FAR longer to check if kernal is finished then to actually run kernal
+
 	// Check for any errors launching the kernel
 	/*cudaError_t cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
