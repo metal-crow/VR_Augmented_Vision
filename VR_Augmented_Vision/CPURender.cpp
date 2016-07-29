@@ -17,21 +17,21 @@ int CPU_Render(HINSTANCE hinst)
 {
 	InitializeCriticalSection(&update_frame_buffer);//set up mutex
 
-	projected_frame = Mat::zeros(screenHeight, screenWidth, CV_8UC4);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
+	projected_frame = Mat::zeros(SCREEN_HEIGHT, SCREEN_WIDTH, CV_8UC4);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
 
 	for (unsigned char i = 0; i < NUMBER_OF_CAMERAS; ++i){
-		Mat frame = Mat::zeros(cubeFaceHeight, cubeFaceWidth, CV_8UC3);
+		Mat frame = Mat::zeros(CUBE_FACE_HEIGHT, CUBE_FACE_WIDTH, CV_8UC3);
 		frame_array[i].frame_0 = new Mat(frame);//copy frame into heap, return pointer
 		frame_array[i].frame_1 = new Mat(frame);
 		frame_array[i].selected_frame = 0;
 	}
 
 	//start n threads, to cover the entire screen area
-	unsigned int per_thread_width = screenWidth / (NUM_THREADS/3);
-	unsigned int per_thread_height = screenHeight / (NUM_THREADS/2);
+	unsigned int per_thread_width = SCREEN_WIDTH / ((NUM_THREADS-1)/3);
+	unsigned int per_thread_height = SCREEN_HEIGHT / ((NUM_THREADS-1)/2);
 	int x_offset = 0;
 	int y_offset = 0;
-	for (unsigned int i = 0; i < NUM_THREADS; ++i){
+	for (unsigned int i = 0; i < NUM_THREADS-1; ++i){
 		Thread_Screen* thread_area = (Thread_Screen*)malloc(sizeof(Thread_Screen));
 		thread_area->height = per_thread_height;
 		thread_area->width = per_thread_width;
@@ -115,7 +115,7 @@ DWORD WINAPI Project_to_Screen(void* input){
 		for (int j = area->y; j < area->y+area->height; j++)
 		{
 			//Rows start from the bottom
-			v = 1 - ((double)j / screenHeight);
+			v = 1 - ((double)j / SCREEN_HEIGHT);
 			theta = v * M_PI;
 
 			for (int i = area->x; i < area->x+area->width; i++)//go along columns in inner loop for speed.
@@ -123,7 +123,7 @@ DWORD WINAPI Project_to_Screen(void* input){
 				//convert x,y cartesian to u,v polar
 
 				//Columns start from the left
-				u = ((double)i / screenWidth);
+				u = ((double)i / SCREEN_WIDTH);
 				phi = u * 2 * M_PI;
 
 				//convert polar to 3d vector
@@ -148,8 +148,8 @@ DWORD WINAPI Project_to_Screen(void* input){
 				if (xa == 1)
 				{
 					//Right
-					xPixel = (int)((((za + 1.0) / 2.0) - 1.0) * cubeFaceWidth);
-					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
+					xPixel = (int)((((za + 1.0) / 2.0) - 1.0) * CUBE_FACE_WIDTH);
+					yPixel = (int)((((ya + 1.0) / 2.0)) * CUBE_FACE_HEIGHT);
 
 					switch (frame_array[right_frame].selected_frame){
 						case 0:
@@ -164,8 +164,8 @@ DWORD WINAPI Project_to_Screen(void* input){
 				else if (xa == -1)
 				{
 					//Left
-					xPixel = (int)((((za + 1.0) / 2.0)) * cubeFaceWidth);
-					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
+					xPixel = (int)((((za + 1.0) / 2.0)) * CUBE_FACE_WIDTH);
+					yPixel = (int)((((ya + 1.0) / 2.0)) * CUBE_FACE_HEIGHT);
 
 					switch (frame_array[left_frame].selected_frame){
 						case 0:
@@ -180,10 +180,10 @@ DWORD WINAPI Project_to_Screen(void* input){
 				else if (ya == -1)
 				{
 					//Up
-					xPixel = (int)((((xa + 1.0) / 2.0)) * cubeFaceWidth);
-					yPixel = (int)((((za + 1.0) / 2.0) - 1.0) * cubeFaceHeight);
+					xPixel = (int)((((xa + 1.0) / 2.0)) * CUBE_FACE_WIDTH);
+					yPixel = (int)((((za + 1.0) / 2.0) - 1.0) * CUBE_FACE_HEIGHT);
 					//flip vertical
-					yPixel = (cubeFaceHeight - 1) - abs(yPixel);
+					yPixel = (CUBE_FACE_HEIGHT - 1) - abs(yPixel);
 
 					switch (frame_array[top_frame].selected_frame){
 						case 0:
@@ -198,10 +198,10 @@ DWORD WINAPI Project_to_Screen(void* input){
 				else if (ya == 1)
 				{
 					//Down
-					xPixel = (int)((((xa + 1.0) / 2.0)) * cubeFaceWidth);
-					yPixel = (int)((((za + 1.0) / 2.0)) * cubeFaceHeight);
+					xPixel = (int)((((xa + 1.0) / 2.0)) * CUBE_FACE_WIDTH);
+					yPixel = (int)((((za + 1.0) / 2.0)) * CUBE_FACE_HEIGHT);
 					//flip vertical
-					yPixel = (cubeFaceHeight - 1) - abs(yPixel);
+					yPixel = (CUBE_FACE_HEIGHT - 1) - abs(yPixel);
 
 					switch (frame_array[bottom_frame].selected_frame){
 						case 0:
@@ -216,8 +216,8 @@ DWORD WINAPI Project_to_Screen(void* input){
 				else if (za == 1)
 				{
 					//Front
-					xPixel = (int)((((xa + 1.0) / 2.0)) * cubeFaceWidth);
-					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
+					xPixel = (int)((((xa + 1.0) / 2.0)) * CUBE_FACE_WIDTH);
+					yPixel = (int)((((ya + 1.0) / 2.0)) * CUBE_FACE_HEIGHT);
 
 					switch (frame_array[front_frame].selected_frame){
 						case 0:
@@ -232,8 +232,8 @@ DWORD WINAPI Project_to_Screen(void* input){
 				else if (za == -1)
 				{
 					//Back
-					xPixel = (int)((((xa + 1.0) / 2.0) - 1.0) * cubeFaceWidth);
-					yPixel = (int)((((ya + 1.0) / 2.0)) * cubeFaceHeight);
+					xPixel = (int)((((xa + 1.0) / 2.0) - 1.0) * CUBE_FACE_WIDTH);
+					yPixel = (int)((((ya + 1.0) / 2.0)) * CUBE_FACE_HEIGHT);
 
 					switch (frame_array[back_frame].selected_frame){
 						case 0:

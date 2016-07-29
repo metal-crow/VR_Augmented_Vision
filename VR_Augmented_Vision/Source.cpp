@@ -25,7 +25,7 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 
 	//init vr and mirror
 #if USE_VR
-	Initalize_VR(hinst, screenWidth, screenHeight);
+	Initalize_VR(hinst, SCREEN_WIDTH, SCREEN_HEIGHT);
 #else
 	namedWindow("");
 #endif

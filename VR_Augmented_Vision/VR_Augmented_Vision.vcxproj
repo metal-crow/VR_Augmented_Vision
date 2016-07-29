@@ -97,6 +97,8 @@
     <ClCompile>
       <AdditionalIncludeDirectories>$(OPENCV_DIR)\..\..\include;..\VR_Augmented_Vision_GPU;E:\Code Workspace\.external libraries\OculusSDK\LibOVR\Include</AdditionalIncludeDirectories>
       <Optimization>Disabled</Optimization>
+      <SmallerTypeCheck>true</SmallerTypeCheck>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(OPENCV_DIR)\lib;$(OutDir);E:\Code Workspace\.external libraries\OculusSDK\LibOVR\Lib\Windows\$(Platform)\$(Configuration)\VS2013</AdditionalLibraryDirectories>

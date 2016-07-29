@@ -18,23 +18,22 @@ using namespace std;
 /*-----Contants and settings------*/
 
 #define GPU 1 //0 for CPU only, 1 for GPU
-#define NUM_THREADS 6
-
+#define NUM_THREADS 7 //this specifies the number of thread this program can use
 #define USE_VR 1
 
 #define DEBUG_TIME 1
 
-#define NUMBER_OF_CAMERAS 6 //can be a char, since never more than 255 cameras
+const unsigned char NUMBER_OF_CAMERAS = 6; //should never be more than 255 cameras
 
 //combined width of input images
-const unsigned int cubeFaceWidth = 1100;
-const unsigned int totalWidth = cubeFaceWidth * 4; //4 horizontal faces
-const unsigned int cubeFaceHeight = 450;
-const unsigned int totalHeight = cubeFaceHeight * 3; //3 vertical faces
+const unsigned int CUBE_FACE_WIDTH = 1100;
+const unsigned int TOTAL_WIDTH = CUBE_FACE_WIDTH * 4; //4 horizontal faces
+const unsigned int CUBE_FACE_HEIGHT = 450;
+const unsigned int TOTAL_HEIGHT = CUBE_FACE_HEIGHT * 3; //3 vertical faces
 
 //desired size of output image
-const unsigned int screenWidth = 1920;
-const unsigned int screenHeight = 1200;//NOTE: since we want to cut of the tops of the poles, makes this slightly higher than actual, then crop
+const unsigned int SCREEN_WIDTH = 1920;
+const unsigned int SCREEN_HEIGHT = 1200;//NOTE: since we want to cut of the tops of the poles, makes this slightly higher than actual, then crop
 
 
 /*-----Structs and Enums----*/
