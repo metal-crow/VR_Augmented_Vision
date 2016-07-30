@@ -27,8 +27,8 @@ int CPU_Render(HINSTANCE hinst)
 	}
 
 	//start n threads, to cover the entire screen area
-	unsigned int per_thread_width = SCREEN_WIDTH / ((NUM_THREADS-1)/3);
-	unsigned int per_thread_height = SCREEN_HEIGHT / ((NUM_THREADS-1)/2);
+	unsigned int per_thread_width = SCREEN_WIDTH / ((NUM_THREADS-1)/3.0);
+	unsigned int per_thread_height = SCREEN_HEIGHT / ((NUM_THREADS-1)/2.0);
 	int x_offset = 0;
 	int y_offset = 0;
 	for (unsigned int i = 0; i < NUM_THREADS-1; ++i){
