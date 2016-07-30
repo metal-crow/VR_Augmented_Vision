@@ -109,11 +109,11 @@ void copy_new_frame(unsigned char camera, unsigned char* image_data){
 
 	switch (frame.selected_frame){
 		case 0:
-			cudaMemcpy(frame.frame_1, image_data, frame_width*frame_height * 3 * sizeof(unsigned char), cudaMemcpyHostToDevice);
+			cudaMemcpy2DAsync(frame.frame_1, frame_width*sizeof(unsigned char) * 3, image_data, frame_width*sizeof(unsigned char) * 3, frame_width*sizeof(unsigned char) * 3, frame_height, cudaMemcpyHostToDevice);
 			frame.selected_frame = 1;
 			break;
 		case 1:
-			cudaMemcpy(frame.frame_0, image_data, frame_width*frame_height * 3 * sizeof(unsigned char), cudaMemcpyHostToDevice);
+			cudaMemcpy2DAsync(frame.frame_0, frame_width*sizeof(unsigned char) * 3, image_data, frame_width*sizeof(unsigned char) * 3, frame_width*sizeof(unsigned char) * 3, frame_height, cudaMemcpyHostToDevice);
 			frame.selected_frame = 0;
 			break;
 	}
