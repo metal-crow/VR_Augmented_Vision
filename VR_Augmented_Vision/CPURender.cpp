@@ -53,10 +53,12 @@ int CPU_Render(HINSTANCE hinst)
 		}
 	}
 
+	#if DEBUG_TIME
+		long start_time = clock();
+		unsigned long long submit_frame_counter = 0;
+	#endif
+
 	while (1){
-		#if DEBUG_TIME
-			long start = clock();
-		#endif
 		//read any new frames from the cameras
 		for (unsigned char i = 0; i < NUMBER_OF_CAMERAS; ++i){
 			//if there is a new frame for a camera, get it
@@ -96,7 +98,12 @@ int CPU_Render(HINSTANCE hinst)
 			waitKey(1);
 		#endif
 		#if DEBUG_TIME
-			printf("time:%ld\n", clock() - start);
+			submit_frame_counter++;
+			if ((clock() - start_time) / CLOCKS_PER_SEC >= 1){
+				printf("fps %d\n", submit_frame_counter);
+				submit_frame_counter = 0;
+				start_time = clock();
+			}
 		#endif
 	}
 
