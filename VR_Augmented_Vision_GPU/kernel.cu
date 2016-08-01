@@ -7,29 +7,40 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-unsigned char number_of_cameras;
-unsigned int frame_width, frame_height;
-
-unsigned int projected_frame_width, projected_frame_height;
-unsigned char* projected_frame_host;//the host's copy of the projected frame. pinned memory
-unsigned char* projected_frame;//dont need a second buffer because memcpy is thread agnostic, so worst case a single pixel is corrupted
-
-enum camera_names{
-	top_frame = 0,
-	bottom_frame = 1,
-	front_frame = 2,
-	left_frame = 3,
-	right_frame = 4,
-	back_frame = 5,
+//enum for each ViewPoint
+enum viewpoint_names{
+	top_view = 0,
+	bottom_view = 1,
+	front_view = 2,
+	left_view = 3,
+	right_view = 4,
+	back_view = 5,
 };
 
-typedef struct{
-	unsigned char* frame_0;//these two serve as frame buffers
-	unsigned char* frame_1;
-	unsigned char selected_frame;//this is used by the thread to get pixel data from the current frame. Must be in range 0 to number_of buffer frames-1
-} Frame_Info;
+unsigned char number_of_viewpoints;
+unsigned int frame_width, frame_height;
 
-Frame_Info* frame_array;//pointer stored on host memory, which points to device memory
+typedef struct{
+	unsigned char* left;
+	unsigned char* right;
+} Projected_Frame;
+
+unsigned int projected_frame_width, projected_frame_height;
+Projected_Frame projected_frame_host;//the host's copy of the projected frame. pinned memory
+Projected_Frame projected_frame;//dont need a second buffer because memcpy is thread agnostic, so worst case a single pixel is corrupted
+
+typedef struct{
+	unsigned char* frame_0;//frames used for frame buffer
+	unsigned char* frame_1;
+	unsigned char selected_frame;//frame current in use from buffer
+} Frame_Pointer;
+
+typedef struct{
+	Frame_Pointer left;
+	Frame_Pointer right;
+} ViewPoint_Frame_Pointer;
+
+ViewPoint_Frame_Pointer* viewpoint_frame_array;//pointer stored on host memory, which points to device memory
 
 #define THREADS_PER_BLOCK_MAX 1024 //note this this usually can't be used since the number of available registers is usually the lower bound
 #define THREADS_PER_BLOCK_USED 512
@@ -40,7 +51,7 @@ unsigned int BLOCKS_USED;
 //allocate space for the array of images, and the buffer images for each camera, and the final projected image
 //also set some global constants
 //return the pointer to the host's copy of projected frame, or NULL for any error
-unsigned char* allocate_frames(unsigned char arg_number_of_cameras, 
+void* allocate_frames(unsigned char arg_number_of_viewpoints,
 					 unsigned int arg_frame_width, unsigned int arg_frame_height, 
 					 unsigned int arg_projected_frame_width, unsigned int arg_projected_frame_height)
 {
@@ -52,40 +63,54 @@ unsigned char* allocate_frames(unsigned char arg_number_of_cameras,
 	}
 
 	//save these variables
-	number_of_cameras = arg_number_of_cameras;
+	number_of_viewpoints = arg_number_of_viewpoints;
 	frame_width = arg_frame_width;
 	frame_height = arg_frame_height;
 	projected_frame_width = arg_projected_frame_width;
 	projected_frame_height = arg_projected_frame_height;
 	
-	cudaStatus = cudaMalloc(&frame_array, arg_number_of_cameras*sizeof(Frame_Info));//allocate space for frame array
+	cudaStatus = cudaMalloc(&viewpoint_frame_array, number_of_viewpoints*sizeof(ViewPoint_Frame_Pointer));//allocate space for frame array
 	if (cudaStatus != cudaSuccess) {
 		printf("Failed to malloc frame_array!\n");
 		return NULL;
 	}
 
-	for (unsigned char i = 0; i < arg_number_of_cameras; ++i){
+	for (unsigned char i = 0; i < number_of_viewpoints; ++i){
 		//setup frame info locally (point to device allocations)
-		Frame_Info camera_frame_info;
-		cudaMalloc(&camera_frame_info.frame_0, arg_frame_width*arg_frame_height * 3 * sizeof(unsigned char));
-		cudaMalloc(&camera_frame_info.frame_1, arg_frame_width*arg_frame_height * 3 * sizeof(unsigned char));
-		camera_frame_info.selected_frame = 0;
+		ViewPoint_Frame_Pointer viewpoint_frame_info;
+		cudaMalloc(&viewpoint_frame_info.left.frame_0, arg_frame_width*arg_frame_height * 3 * sizeof(unsigned char));
+		cudaMalloc(&viewpoint_frame_info.left.frame_1, arg_frame_width*arg_frame_height * 3 * sizeof(unsigned char));
+		viewpoint_frame_info.left.selected_frame = 0;
+		cudaMalloc(&viewpoint_frame_info.right.frame_0, arg_frame_width*arg_frame_height * 3 * sizeof(unsigned char));
+		cudaMalloc(&viewpoint_frame_info.right.frame_1, arg_frame_width*arg_frame_height * 3 * sizeof(unsigned char));
+		viewpoint_frame_info.right.selected_frame = 0;
 		//copy over local frame info to device memory
-		cudaStatus = cudaMemcpy(&frame_array[i], &camera_frame_info, sizeof(Frame_Info), cudaMemcpyHostToDevice);
+		cudaStatus = cudaMemcpy(&viewpoint_frame_array[i], &viewpoint_frame_info, sizeof(ViewPoint_Frame_Pointer), cudaMemcpyHostToDevice);
 		if (cudaStatus != cudaSuccess) {
 			printf("Failed to copy Frame_Info!\n");
 			return NULL;
 		}
 	}
 
-	cudaStatus = cudaMallocHost(&projected_frame_host, arg_projected_frame_width*arg_projected_frame_height * 4 * sizeof(unsigned char));//allocate the host's projected frame as pinned memory
+	cudaStatus = cudaMallocHost(&projected_frame_host.left, arg_projected_frame_width*arg_projected_frame_height * 4 * sizeof(unsigned char));//allocate the host's projected frame as pinned memory
 	if (cudaStatus != cudaSuccess) {
-		printf("Failed to malloc projected_frame_host!\n");
+		printf("Failed to malloc projected_frame_host left!\n");
 		return NULL;
 	}
-	cudaStatus = cudaMalloc(&projected_frame, arg_projected_frame_width*arg_projected_frame_height * 4 * sizeof(unsigned char));//allocate the gpu's projected frame
+	cudaStatus = cudaMallocHost(&projected_frame_host.right, arg_projected_frame_width*arg_projected_frame_height * 4 * sizeof(unsigned char));
 	if (cudaStatus != cudaSuccess) {
-		printf("Failed to malloc projected_frame!\n");
+		printf("Failed to malloc projected_frame_host right!\n");
+		return NULL;
+	}
+
+	cudaStatus = cudaMalloc(&projected_frame.left, arg_projected_frame_width*arg_projected_frame_height * 4 * sizeof(unsigned char));//allocate the gpu's projected frame
+	if (cudaStatus != cudaSuccess) {
+		printf("Failed to malloc projected_frame left!\n");
+		return NULL;
+	}
+	cudaStatus = cudaMalloc(&projected_frame.right, arg_projected_frame_width*arg_projected_frame_height * 4 * sizeof(unsigned char));//allocate the gpu's projected frame
+	if (cudaStatus != cudaSuccess) {
+		printf("Failed to malloc projected_frame right!\n");
 		return NULL;
 	}
 
@@ -96,16 +121,20 @@ unsigned char* allocate_frames(unsigned char arg_number_of_cameras,
 		return NULL;
 	}
 
-	return projected_frame_host;
+	return &projected_frame_host;
 }
 
 //given a pointer to an image on the host memory, copy to the currently unused frame buffer for that frame in the device memory, and update the selected frame indicator
 //don't need syncronization like in non-gpu code, because we're not changing the pointer, but writing inplace to the buffer, which is thread safe. Worst case 1 corrupted pixel.
 //updating selected frame must be atomic though
-void copy_new_frame(unsigned char camera, unsigned char* image_data){
+void copy_new_frame(unsigned char view, bool left_eye, unsigned char* image_data){
 	//since we can't dereference device memory on host code
-	Frame_Info frame;
-	cudaMemcpy(&frame, &frame_array[camera], sizeof(Frame_Info), cudaMemcpyDeviceToHost);//get addresses in device memory for the images
+	Frame_Pointer frame;
+	if (left_eye){
+		cudaMemcpy(&frame, &viewpoint_frame_array[view].left, sizeof(Frame_Pointer), cudaMemcpyDeviceToHost);//get addresses in device memory for the images
+	}else{
+		cudaMemcpy(&frame, &viewpoint_frame_array[view].right, sizeof(Frame_Pointer), cudaMemcpyDeviceToHost);
+	}
 
 	switch (frame.selected_frame){
 		case 0:
@@ -118,15 +147,37 @@ void copy_new_frame(unsigned char camera, unsigned char* image_data){
 			break;
 	}
 
-	cudaMemcpy(&(frame_array[camera].selected_frame), &frame.selected_frame, sizeof(unsigned char), cudaMemcpyHostToDevice);//TODO atomic
+	if (left_eye){
+		cudaMemcpy(&(viewpoint_frame_array[view].left.selected_frame), &frame.selected_frame, sizeof(unsigned char), cudaMemcpyHostToDevice);//TODO atomic
+	}
+	else{
+		cudaMemcpy(&(viewpoint_frame_array[view].right.selected_frame), &frame.selected_frame, sizeof(unsigned char), cudaMemcpyHostToDevice);//TODO atomic
+	}
 }
 
 //copy the generated projected frame stored on the gpu to the cpu memory
 //use pinned host memory, non-waited async copy (because like kernal, longer to check if copied than to actually copy), and multiple streams (in form of memcpy2D)
+//TODO can this be optimized so that only the necissary eye is copied?
 void read_projected_frame(){
-	cudaError_t cudaStatus = cudaMemcpy2DAsync(projected_frame_host, projected_frame_width*sizeof(unsigned char) * 4, projected_frame, projected_frame_width*sizeof(unsigned char) * 4, projected_frame_width*sizeof(unsigned char) * 4, projected_frame_height, cudaMemcpyDeviceToHost);
-	if (cudaStatus != cudaSuccess) {
-		printf("cudaMalloc failed!");
+	cudaMemcpy2DAsync(projected_frame_host.left, projected_frame_width*sizeof(unsigned char) * 4, projected_frame.left, projected_frame_width*sizeof(unsigned char) * 4, projected_frame_width*sizeof(unsigned char) * 4, projected_frame_height, cudaMemcpyDeviceToHost);
+	cudaMemcpy2DAsync(projected_frame_host.right, projected_frame_width*sizeof(unsigned char) * 4, projected_frame.right, projected_frame_width*sizeof(unsigned char) * 4, projected_frame_width*sizeof(unsigned char) * 4, projected_frame_height, cudaMemcpyDeviceToHost);
+}
+
+//helper function for getting pixel data from frame
+__device__ __forceinline__ void Get_Pixel_From_Frame(Frame_Pointer frame, int yPixel, int xPixel, int frame_width,
+													 unsigned char* pixel_out)
+{
+	switch (frame.selected_frame){
+		case 0:
+			pixel_out[0] = frame.frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
+			pixel_out[1] = frame.frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
+			pixel_out[2] = frame.frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
+			break;
+		case 1:
+			pixel_out[0] = frame.frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
+			pixel_out[1] = frame.frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
+			pixel_out[2] = frame.frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
+			break;
 	}
 }
 
@@ -134,7 +185,7 @@ void read_projected_frame(){
 //each handles a single pixel on the projection screen
 __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned int projected_frame_width, 
 								  unsigned int frame_width, unsigned int frame_height,
-								  Frame_Info* frame_array, unsigned char* projected_frame)
+								  ViewPoint_Frame_Pointer* frame_array, Projected_Frame projected_frame)
 {
 	unsigned int thread_num = threadIdx.x + blockIdx.x * blockDim.x;
 	unsigned int j = thread_num / projected_frame_width;//pixel row(height)
@@ -173,7 +224,9 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 	ya = y / a;
 	za = z / a;
 
-	unsigned char pixel[3];
+	//handle both eyes and output images
+	unsigned char pixel_left[3];
+	unsigned char pixel_right[3];
 	int xPixel, yPixel;
 
 	//while (1)
@@ -183,22 +236,8 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 			//Right
 			xPixel = (int)((((za + 1.0) / 2.0) - 1.0) * frame_width);
 			yPixel = (int)((((ya + 1.0) / 2.0)) * frame_height);
-
-			switch (frame_array[right_frame].selected_frame){
-				case 0:
-					pixel[0] = frame_array[right_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
-					pixel[1] = frame_array[right_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
-					pixel[2] = frame_array[right_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
-					break;
-				case 1:
-					pixel[0] = frame_array[right_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
-					pixel[1] = frame_array[right_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
-					pixel[2] = frame_array[right_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
-					break;
-			}
-			/*pixel[0] = 0;
-			pixel[1] = 0;
-			pixel[2] = 255;//red*/
+			Get_Pixel_From_Frame(frame_array[right_view].left, yPixel, xPixel, frame_width, pixel_left);
+			Get_Pixel_From_Frame(frame_array[right_view].right, yPixel, xPixel, frame_width, pixel_right);
 		}
 		else if (xa == -1)
 		{
@@ -209,21 +248,8 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 			}
 			yPixel = (int)((((ya + 1.0) / 2.0)) * frame_height);
 
-			switch (frame_array[left_frame].selected_frame){
-				case 0:
-					pixel[0] = frame_array[left_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
-					pixel[1] = frame_array[left_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
-					pixel[2] = frame_array[left_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
-					break;
-				case 1:
-					pixel[0] = frame_array[left_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
-					pixel[1] = frame_array[left_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
-					pixel[2] = frame_array[left_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
-					break;
-			}
-			/*pixel[0] = 0;
-			pixel[1] = 255;
-			pixel[2] = 255;//yellow*/
+			Get_Pixel_From_Frame(frame_array[left_view].left, yPixel, xPixel, frame_width, pixel_left);
+			Get_Pixel_From_Frame(frame_array[left_view].right, yPixel, xPixel, frame_width, pixel_right);
 		}
 		else if (ya == -1)
 		{
@@ -233,21 +259,8 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 			//flip vertical
 			yPixel = (frame_height - 1) - abs(yPixel);
 
-			switch (frame_array[top_frame].selected_frame){
-				case 0:
-					pixel[0] = frame_array[top_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
-					pixel[1] = frame_array[top_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
-					pixel[2] = frame_array[top_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
-					break;
-				case 1:
-					pixel[0] = frame_array[top_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
-					pixel[1] = frame_array[top_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
-					pixel[2] = frame_array[top_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
-					break;
-			}
-			/*pixel[0] = 0;
-			pixel[1] = 60;
-			pixel[2] = 255;//orange*/
+			Get_Pixel_From_Frame(frame_array[top_view].left, yPixel, xPixel, frame_width, pixel_left);
+			Get_Pixel_From_Frame(frame_array[top_view].right, yPixel, xPixel, frame_width, pixel_right);
 		}
 		else if (ya == 1)
 		{
@@ -257,21 +270,8 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 			//flip vertical
 			yPixel = (frame_height - 1) - abs(yPixel);
 
-			switch (frame_array[bottom_frame].selected_frame){
-				case 0:
-					pixel[0] = frame_array[bottom_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
-					pixel[1] = frame_array[bottom_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
-					pixel[2] = frame_array[bottom_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
-					break;
-				case 1:
-					pixel[0] = frame_array[bottom_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
-					pixel[1] = frame_array[bottom_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
-					pixel[2] = frame_array[bottom_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
-					break;
-			}
-			/*pixel[0] = 255;
-			pixel[1] = 0;
-			pixel[2] = 0;//blue*/
+			Get_Pixel_From_Frame(frame_array[bottom_view].left, yPixel, xPixel, frame_width, pixel_left);
+			Get_Pixel_From_Frame(frame_array[bottom_view].right, yPixel, xPixel, frame_width, pixel_right);
 		}
 		else if (za == 1)
 		{
@@ -279,21 +279,8 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 			xPixel = (int)((((xa + 1.0) / 2.0)) * frame_width);
 			yPixel = (int)((((ya + 1.0) / 2.0)) * frame_height);
 
-			switch (frame_array[front_frame].selected_frame){
-				case 0:
-					pixel[0] = frame_array[front_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
-					pixel[1] = frame_array[front_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
-					pixel[2] = frame_array[front_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
-					break;
-				case 1:
-					pixel[0] = frame_array[front_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
-					pixel[1] = frame_array[front_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
-					pixel[2] = frame_array[front_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
-					break;
-			}
-			/*pixel[0] = 150;
-			pixel[1] = 150;
-			pixel[2] = 150;//grey*/
+			Get_Pixel_From_Frame(frame_array[front_view].left, yPixel, xPixel, frame_width, pixel_left);
+			Get_Pixel_From_Frame(frame_array[front_view].right, yPixel, xPixel, frame_width, pixel_right);
 		}
 		else if (za == -1)
 		{
@@ -301,21 +288,8 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 			xPixel = (int)((((xa + 1.0) / 2.0) - 1.0) * frame_width);
 			yPixel = (int)((((ya + 1.0) / 2.0)) * frame_height);
 
-			switch (frame_array[back_frame].selected_frame){
-				case 0:
-					pixel[0] = frame_array[back_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
-					pixel[1] = frame_array[back_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
-					pixel[2] = frame_array[back_frame].frame_0[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
-					break;
-				case 1:
-					pixel[0] = frame_array[back_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 0];
-					pixel[1] = frame_array[back_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 1];
-					pixel[2] = frame_array[back_frame].frame_1[((abs(yPixel)*frame_width + abs(xPixel)) * 3) + 2];
-					break;
-			}
-			/*pixel[0] = 150;
-			pixel[1] = 0;
-			pixel[2] = 0;//light blue*/
+			Get_Pixel_From_Frame(frame_array[back_view].left, yPixel, xPixel, frame_width, pixel_left);
+			Get_Pixel_From_Frame(frame_array[back_view].right, yPixel, xPixel, frame_width, pixel_right);
 		}
 		else
 		{
@@ -323,15 +297,20 @@ __global__ void Project_to_Screen(unsigned int projected_frame_height, unsigned 
 		}
 
 		//converting to RGBA from BGR, with max A
-		projected_frame[((j*projected_frame_width + i) * 4) + 0] = pixel[2];
-		projected_frame[((j*projected_frame_width + i) * 4) + 1] = pixel[1];
-		projected_frame[((j*projected_frame_width + i) * 4) + 2] = pixel[0];
-		projected_frame[((j*projected_frame_width + i) * 4) + 3] = 0xFF;
+		projected_frame.left[((j*projected_frame_width + i) * 4) + 0] = pixel_left[2];
+		projected_frame.left[((j*projected_frame_width + i) * 4) + 1] = pixel_left[1];
+		projected_frame.left[((j*projected_frame_width + i) * 4) + 2] = pixel_left[0];
+		projected_frame.left[((j*projected_frame_width + i) * 4) + 3] = 0xFF;
+
+		projected_frame.right[((j*projected_frame_width + i) * 4) + 0] = pixel_right[2];
+		projected_frame.right[((j*projected_frame_width + i) * 4) + 1] = pixel_right[1];
+		projected_frame.right[((j*projected_frame_width + i) * 4) + 2] = pixel_right[0];
+		projected_frame.right[((j*projected_frame_width + i) * 4) + 3] = 0xFF;
 	}
 }
 
 void cuda_run(){
-	Project_to_Screen << <BLOCKS_USED, THREADS_PER_BLOCK_USED >> >(projected_frame_height, projected_frame_width, frame_width, frame_height, frame_array, projected_frame);
+	Project_to_Screen << <BLOCKS_USED, THREADS_PER_BLOCK_USED >> >(projected_frame_height, projected_frame_width, frame_width, frame_height, viewpoint_frame_array, projected_frame);
 
 	//fuck error checking and blocking, WE'RE GOING FAST
 	//we actually don't need it because it takes FAR longer to check if kernal is finished then to actually run kernal

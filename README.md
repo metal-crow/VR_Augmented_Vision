@@ -17,3 +17,5 @@ I dunno, its not finished.
 ###TODO:  
 fix issue with when you move your head, oculus has to snap it/or the 2d quad back, instead of just ignoring any movement  
 -want the quad to be in a fixed position, and head movement/rotation to be ignored  
+  
+Should the rendering have speperate pipelines for left and right eyes? i.e if 1 eye comes in but not the other, only have to copy that projection back from gpu, and set that projection to the texture  

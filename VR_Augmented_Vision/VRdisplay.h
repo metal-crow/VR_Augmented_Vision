@@ -2,10 +2,9 @@
 #define VRDISPLAY_H
 
 #include <Windows.h>
-#include "opencv2\core.hpp"
 
-//This requires a RGBA input mat
-void UpdateTexture(cv::Mat input);
+//This requires a RGBA input mat (pass in the data pointer, not the Mat itself)
+void UpdateTexture(unsigned char* left, unsigned char* right);
 
 bool Initalize_VR(HINSTANCE hinst, unsigned int output_width, unsigned int output_height);
 

@@ -4,17 +4,16 @@
 
 #define location "C:/Users/Manganese/Desktop/"
 
-//write only
-//the frame that is displayed to the user
-Mat projected_frame;
+//the image that is displayed to the user
+Projected_Frame projected_frame;
 
-//opencv's array of input videos
-VideoCapture input_videos[NUMBER_OF_CAMERAS];
+//the set of input viewpoints
+ViewPoint input_views[NUMBER_OF_VIEWPOINTS];
 
 //array of pointers to each camera's frame
 //each mat pointer is atomically updated to the new mat when a new frame comes in.
 //eliminates case where mutex would make thread stop writing, which could lead to another frame, which has been updated, not be drawn
-Frame_Pointer frame_array[NUMBER_OF_CAMERAS];
+ViewPoint_Frame_Pointer viewpoint_frame_array[NUMBER_OF_VIEWPOINTS];
 
 int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 {
@@ -31,12 +30,18 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 #endif
 
 	//load input video streams
-	input_videos[top_frame].open(location"top.avi");
-	input_videos[bottom_frame].open(location"bottom.avi");
-	input_videos[front_frame].open(location"front.avi");
-	input_videos[left_frame].open(location"left.avi");
-	input_videos[right_frame].open(location"right.avi");
-	input_videos[back_frame].open(location"back.avi");
+	/*input_views[top_view].left.open(location"3D_20_LEFT.mp4");
+	input_views[top_view].right.open(location"3D_20_RIGHT.mp4");
+	input_views[bottom_view].left.open(location"3D_20_LEFT.mp4");
+	input_views[bottom_view].right.open(location"3D_20_RIGHT.mp4");*/
+	input_views[front_view].left.open(location"3D_20_LEFT.mp4");
+	input_views[front_view].right.open(location"3D_20_RIGHT.mp4");
+	/*input_views[left_view].left.open(location"3D_20_LEFT.mp4");
+	input_views[left_view].right.open(location"3D_20_RIGHT.mp4");
+	input_views[right_view].left.open(location"3D_20_LEFT.mp4");
+	input_views[right_view].right.open(location"3D_20_RIGHT.mp4");
+	input_views[back_view].left.open(location"3D_20_LEFT.mp4");
+	input_views[back_view].right.open(location"3D_20_RIGHT.mp4");*/
 
 	//run main render loop
 #if GPU

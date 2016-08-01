@@ -29,10 +29,6 @@ limitations under the License.
 #else
 	#include "xnamath.h"
 #endif
-
-#include "opencv2\highgui.hpp"
-#include "opencv2\core\directx.hpp"
-#include "opencv2\imgproc.hpp"
 #include <stdlib.h>
 
 #include "VRdisplay.h"
@@ -431,8 +427,8 @@ struct Texture
 		}
 	}*/
 
-	void SetTextureMat(cv::Mat input){
-		DIRECTX.Context->UpdateSubresource(Tex, 0, NULL, (unsigned int *)input.data, SizeW * 4, SizeH * SizeW * 4);
+	void SetTextureMat(unsigned char* input){
+		DIRECTX.Context->UpdateSubresource(Tex, 0, NULL, input, SizeW * 4, SizeH * SizeW * 4);
 	}
 };
 
@@ -789,7 +785,8 @@ struct OculusTexture
 };
 
 
-Model* screen;
+Model* left_eye_view;
+Model* right_eye_view;
 int texture_width;
 int texture_height;
 
@@ -853,7 +850,8 @@ bool SetupMainLoop()
 		return false;
 	}
 
-	// Create the output image, a 2d quad directly in front of the screen
+	// Create the output images, a 2d quad directly in front of the screen
+	// Each is only rendered for ONE eye
 	/*
 	TriangleSet twod_quad;
 	twod_quad.AddSingleQuad(-1, -1, -1, 1, 1, -1, 0xff808080);
@@ -863,9 +861,16 @@ bool SetupMainLoop()
 	)
 	);
 	*/
-	Texture* tex = new Texture(false, texture_width, texture_height);
-	screen = new Model(
-		new Material(tex),
+	left_eye_view = new Model(
+		new Material(
+			new Texture(false, texture_width, texture_height)
+			),
+		-1, -1, 1, 1
+	);
+	right_eye_view = new Model(
+		new Material(
+			new Texture(false, texture_width, texture_height)
+			),
 		-1, -1, 1, 1
 	);
 
@@ -897,18 +902,22 @@ bool Main_VR_Render_Loop(){
 			// Clear and set up rendertarget
 			DIRECTX.SetAndClearRenderTarget(pEyeRenderTexture[eye]->GetRTV(), pEyeDepthBuffer[eye]);
 			DIRECTX.SetViewport((float)eyeRenderViewport[eye].Pos.x, (float)eyeRenderViewport[eye].Pos.y,
-				(float)eyeRenderViewport[eye].Size.w, (float)eyeRenderViewport[eye].Size.h);
+								(float)eyeRenderViewport[eye].Size.w, (float)eyeRenderViewport[eye].Size.h);
 
 			//get the matrix projection to the oculus distortion
 			ovrMatrix4f p = ovrMatrix4f_Projection(eyeRenderDesc[eye].Fov, 0.2f, 1000.0f, ovrProjection_None);
 			XMMATRIX proj = XMMatrixSet(p.M[0][0], p.M[1][0], p.M[2][0], p.M[3][0],
-				p.M[0][1], p.M[1][1], p.M[2][1], p.M[3][1],
-				p.M[0][2], p.M[1][2], p.M[2][2], p.M[3][2],
-				p.M[0][3], p.M[1][3], p.M[2][3], p.M[3][3]);
+										p.M[0][1], p.M[1][1], p.M[2][1], p.M[3][1],
+										p.M[0][2], p.M[1][2], p.M[2][2], p.M[3][2],
+										p.M[0][3], p.M[1][3], p.M[2][3], p.M[3][3]);
 
 			//render using the projection
-			screen->Render(&proj, 1, 1, 1, 1, true);
-
+			//render the specific view for this eye
+			if (eye == 0){
+				left_eye_view->Render(&proj, 1, 1, 1, 1, true);
+			}else{
+				right_eye_view->Render(&proj, 1, 1, 1, 1, true);
+			}
 			// Commit rendering to the swap chain
 			pEyeRenderTexture[eye]->Commit();
 		}
@@ -959,7 +968,8 @@ bool Main_VR_Render_Loop(){
 
 void Exit_VR(){
 	// Release resources
-	delete screen;
+	delete left_eye_view;
+	delete right_eye_view;
 	if (mirrorTexture)
 		ovr_DestroyMirrorTexture(session, mirrorTexture);
 	for (int eye = 0; eye < 2; ++eye)
@@ -971,9 +981,9 @@ void Exit_VR(){
 	ovr_Destroy(session);
 }
 
-void UpdateTexture(cv::Mat input)
-{
-	screen->Fill->Tex->SetTextureMat(input);
+void UpdateTexture(unsigned char* left, unsigned char* right){
+	left_eye_view->Fill->Tex->SetTextureMat(left);
+	right_eye_view->Fill->Tex->SetTextureMat(right);
 }
 
 bool Initalize_VR(HINSTANCE hinst, unsigned int output_width, unsigned int output_height)
