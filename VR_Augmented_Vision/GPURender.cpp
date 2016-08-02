@@ -21,6 +21,7 @@ typedef struct {
 } Viewpoint_Thread_Watcher;
 
 DWORD WINAPI Grab_Camera_Frame(void* views_responsible_p);
+DWORD WINAPI VR_Render_Thread(void* null);
 
 #undef NUM_THREADS
 #define NUM_THREADS 2 //TEMP: higher fps using fewer camera watching threads
@@ -44,10 +45,8 @@ int GPU_Render(HINSTANCE hinst)
 		CreateThread(NULL, 0, Grab_Camera_Frame, (void*)views_responsible, 0, NULL);
 	}
 
-	#if DEBUG_TIME
-		long start_time = clock();
-		unsigned long long submit_frame_counter = 0;
-	#endif
+	HANDLE vr_thread = CreateThread(NULL, 0, VR_Render_Thread, NULL, 0, NULL);
+	SetThreadPriority(vr_thread, THREAD_PRIORITY_TIME_CRITICAL);
 
 	while (1){
 		//trigger a new projection generation
@@ -64,24 +63,6 @@ int GPU_Render(HINSTANCE hinst)
 				UpdateTexture(projected_frame.left.data, projected_frame.right.data);//2 ms
 			#endif
 		}
-
-		//want to update vr headset regardless of new frame (something something async timewarp is stupid)
-		#if USE_VR
-			Main_VR_Render_Loop();
-		#else
-			imshow("", projected_frame.left);
-			waitKey(1);
-			Sleep(10);
-		#endif
-
-		#if DEBUG_TIME
-			submit_frame_counter++;
-			if ((clock() - start_time) / CLOCKS_PER_SEC >= 1){
-				printf("fps %d\n", submit_frame_counter);
-				submit_frame_counter = 0;
-				start_time = clock();
-			}
-		#endif
 	}
 
 	return EXIT_SUCCESS;
@@ -112,5 +93,32 @@ DWORD WINAPI Grab_Camera_Frame(void* views_responsible_p){
 
 		//we don't want to 100% cpu, and know that a camera wont have a new frame instantly available, so yield
 		Sleep(10);
+	}
+}
+
+DWORD WINAPI VR_Render_Thread(void* null){
+	#if DEBUG_TIME
+		long start_time = clock();
+		unsigned long long submit_frame_counter = 0;
+	#endif
+
+	while (1){
+		//want to update vr headset regardless of new frame (something something async timewarp is stupid)
+		#if USE_VR
+			Main_VR_Render_Loop();
+		#else
+			imshow("", projected_frame.left);
+			waitKey(1);
+			Sleep(10);
+		#endif
+
+		#if DEBUG_TIME
+			submit_frame_counter++;
+			if ((clock() - start_time) / CLOCKS_PER_SEC >= 1){
+				printf("fps %d\n", submit_frame_counter);
+				submit_frame_counter = 0;
+				start_time = clock();
+			}
+		#endif
 	}
 }

@@ -31,7 +31,7 @@ const unsigned int TOTAL_WIDTH = CUBE_FACE_WIDTH * 4; //4 horizontal faces
 const unsigned int CUBE_FACE_HEIGHT = 1080;
 const unsigned int TOTAL_HEIGHT = CUBE_FACE_HEIGHT * 3; //3 vertical faces
 
-//desired size of output image (per eye, not total)
+//desired size of output image
 const unsigned int SCREEN_WIDTH = 1080;
 const unsigned int SCREEN_HEIGHT = 1200;//TODO: since we want to cut of the tops of the poles, makes this slightly higher than actual, then crop
 

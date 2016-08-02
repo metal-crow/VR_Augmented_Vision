@@ -43,6 +43,8 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 	input_views[back_view].left.open(location"3D_20_LEFT.mp4");
 	input_views[back_view].right.open(location"3D_20_RIGHT.mp4");*/
 
+	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+
 	//run main render loop
 #if GPU
 	GPU_Render(hinst);
