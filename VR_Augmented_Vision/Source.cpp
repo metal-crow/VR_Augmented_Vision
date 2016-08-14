@@ -2,7 +2,7 @@
 #include "GPURender.h"
 #include "CPURender.h"
 
-#define location "C:/Users/Manganese/Desktop/"
+#define location "C:/Users/Manganese/Desktop/backyard sterio/"
 
 //the image that is displayed to the user
 Projected_Frame projected_frame;
@@ -30,20 +30,24 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 #endif
 
 	//load input video streams
-	/*input_views[top_view].left.open(location"3D_20_LEFT.mp4");
-	input_views[top_view].right.open(location"3D_20_RIGHT.mp4");
-	input_views[bottom_view].left.open(location"3D_20_LEFT.mp4");
-	input_views[bottom_view].right.open(location"3D_20_RIGHT.mp4");*/
-	input_views[front_view].left.open(location"3D_20_LEFT.mp4");
-	input_views[front_view].right.open(location"3D_20_RIGHT.mp4");
-	/*input_views[left_view].left.open(location"3D_20_LEFT.mp4");
-	input_views[left_view].right.open(location"3D_20_RIGHT.mp4");
-	input_views[right_view].left.open(location"3D_20_LEFT.mp4");
-	input_views[right_view].right.open(location"3D_20_RIGHT.mp4");
-	input_views[back_view].left.open(location"3D_20_LEFT.mp4");
-	input_views[back_view].right.open(location"3D_20_RIGHT.mp4");*/
+	input_views[top_view].left.open(location"backyard_top_L.png.mp4");
+	input_views[top_view].right.open(location"backyard_top_R.png.mp4");
+	input_views[bottom_view].left.open(location"backyard_bot_L.png.mp4");
+	input_views[bottom_view].right.open(location"backyard_bot_R.png.mp4");
+	input_views[front_view].left.open(location"backyard_front_L.png.mp4");
+	input_views[front_view].right.open(location"backyard_front_R.png.mp4");
+	input_views[left_view].left.open(location"backyard_left_L.png.mp4");
+	input_views[left_view].right.open(location"backyard_left_R.png.mp4");
+	input_views[right_view].left.open(location"backyard_right_L.png.mp4");
+	input_views[right_view].right.open(location"backyard_right_R.png.mp4");
+	input_views[back_view].left.open(location"backyard_back_L.png.mp4");
+	input_views[back_view].right.open(location"backyard_back_R.png.mp4");
 
-	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);//REALTIME_PRIORITY_CLASS
+
+	//initalize default output images
+	projected_frame.left = Mat::zeros(SCREEN_HEIGHT, SCREEN_WIDTH, CV_8UC4);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
+	projected_frame.right = Mat::zeros(SCREEN_HEIGHT, SCREEN_WIDTH, CV_8UC4);
 
 	//run main render loop
 #if GPU

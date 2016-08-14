@@ -18,10 +18,6 @@ int CPU_Render(HINSTANCE hinst)
 {
 	InitializeCriticalSection(&update_frame_buffer);//set up mutex
 
-	//initalize default output images
-	projected_frame.left = Mat::zeros(SCREEN_HEIGHT, SCREEN_WIDTH, CV_8UC4);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
-	projected_frame.right = Mat::zeros(SCREEN_HEIGHT, SCREEN_WIDTH, CV_8UC4);
-
 	//initalize frame array (set default images)
 	for (unsigned char i = 0; i < NUMBER_OF_VIEWPOINTS; ++i){
 		Mat frame = Mat::zeros(CUBE_FACE_HEIGHT, CUBE_FACE_WIDTH, CV_8UC3);

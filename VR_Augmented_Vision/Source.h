@@ -25,11 +25,9 @@ using namespace std;
 
 const unsigned char NUMBER_OF_VIEWPOINTS = 6; //should never be more than 256 viewpoints
 
-//combined width of input images
-const unsigned int CUBE_FACE_WIDTH = 1920;
-const unsigned int TOTAL_WIDTH = CUBE_FACE_WIDTH * 4; //4 horizontal faces
-const unsigned int CUBE_FACE_HEIGHT = 1080;
-const unsigned int TOTAL_HEIGHT = CUBE_FACE_HEIGHT * 3; //3 vertical faces
+//resolution of input cameras
+const unsigned int CUBE_FACE_WIDTH = 1536;
+const unsigned int CUBE_FACE_HEIGHT = 1536;
 
 //desired size of output image
 const unsigned int SCREEN_WIDTH = 1080;
