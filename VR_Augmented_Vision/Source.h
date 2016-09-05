@@ -23,9 +23,9 @@ using namespace std;
 
 #define DEBUG_TIME 1
 
-const unsigned char NUMBER_OF_VIEWPOINTS = 6; //should never be more than 256 viewpoints
+#define NUMBER_OF_VIEWPOINTS 6 //this is a constant 6, since we're formatting this as a cube map.
 
-//resolution of input cameras
+//resolution of each cube face (each side's combined cameras' resolutions)
 const unsigned int CUBE_FACE_WIDTH = 1536;
 const unsigned int CUBE_FACE_HEIGHT = 1536;
 
@@ -36,8 +36,8 @@ const unsigned int SCREEN_HEIGHT = 1200;//TODO: since we want to cut of the tops
 
 /*-----Structs and Enums----*/
 
-//enum for each ViewPoint
-enum viewpoint_names{
+//enum for each cube face
+enum cubeface_names{
 	top_view = 0,
 	bottom_view = 1,
 	front_view = 2,
@@ -46,39 +46,38 @@ enum viewpoint_names{
 	back_view = 5,
 };
 
+//THe part of a cube face a camera composes. A slice
 typedef struct{
-	Mat* frame_0;//frames used for frame buffer
-	Mat* frame_1;
-	unsigned char selected_frame;//frame current in use from buffer
-} Frame_Pointer;
+	cubeface_names cube_face;//the cube face this is a slice of
+	unsigned int slice_width;
+	unsigned int slice_height;
+	unsigned int slice_loc_in_view_x;//x offset from left of cube face
+	unsigned int slice_loc_in_view_y;//y offset from top of cube face
+} CubeFace_Slice;
 
+//Each camera (left and right are same camera to simplify). Composes multiple slices of a single cube face
 typedef struct{
-	Frame_Pointer left;
-	Frame_Pointer right;
-} ViewPoint_Frame_Pointer;
-
-//Handle each set of cameras, called a viewpoint. left and right eye cameras at a specific position.
-typedef struct{
-	VideoCapture left;
-	VideoCapture right;
-} ViewPoint;
+	VideoCapture cam_left;
+	VideoCapture cam_right;
+	unsigned char number_of_cube_faces;//the number of cube faces this camera is a slice of
+	CubeFace_Slice* slices_of;//an array of the cube faces this camera is sliced into
+} Camera_View;
 
 typedef struct{
 	Mat left;
 	Mat right;
-} Projected_Frame;
+} Frame;
 
 /*-----Global Variable declarations (defined in c file)------*/
 
 //the image that is displayed to the user
-extern Projected_Frame projected_frame;
+extern Frame projected_frame;
 
-//the set of input viewpoints
-extern ViewPoint input_views[NUMBER_OF_VIEWPOINTS];
+//the image frames that make up the cube faces
+extern Frame cube_faces[NUMBER_OF_VIEWPOINTS];
 
-//array of pointers to each camera's frame
-//each mat pointer is atomically updated to the new mat when a new frame comes in.
-//eliminates case where mutex would make thread stop writing, which could lead to another frame, which has been updated, not be drawn
-extern ViewPoint_Frame_Pointer viewpoint_frame_array[NUMBER_OF_VIEWPOINTS];
+//the input cameras that are used to populate the cube_faces
+extern unsigned char number_of_cameras;
+extern Camera_View cameras[10];//TODO make this dynamic
 
 #endif

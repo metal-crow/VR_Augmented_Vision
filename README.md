@@ -14,6 +14,11 @@ yes!
 ####Does it work in PRACTICE?
 I dunno, its not finished.
 
+####Greater than 6 cam setup
+Since most cameras don't have the 180 vertical and horizontal fov requires to generate a cubemap, you'll usually want to use more cameras and combine their images to get a higher fov.  
+This is done by hvaing each viewpoint have more than 1 camera accociated with it.  
+When each camera in a viewpoint is read, the image is slid into the total output image for this cube's face, as a slice of the entire side.  
+The only speed loss from this teqnique is the movement of the image (a slice) into the main face's image.  
   
 ###TODO:  
 Get test 360 steriocopic videos (calibration with squares for shape, and real videos)    

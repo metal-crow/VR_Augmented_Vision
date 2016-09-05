@@ -12,7 +12,6 @@ typedef struct{
 } Thread_Screen;
 
 DWORD WINAPI Project_to_Screen(void* input);
-static inline void Update_ViewPoint_Frame(Frame_Pointer* frame, Mat* next_frame_pointer);
 
 int CPU_Render(HINSTANCE hinst)
 {
@@ -21,14 +20,8 @@ int CPU_Render(HINSTANCE hinst)
 	//initalize frame array (set default images)
 	for (unsigned char i = 0; i < NUMBER_OF_VIEWPOINTS; ++i){
 		Mat frame = Mat::zeros(CUBE_FACE_HEIGHT, CUBE_FACE_WIDTH, CV_8UC3);
-
-		viewpoint_frame_array[i].left.frame_0 = new Mat(frame);//copy frame into heap, return pointer
-		viewpoint_frame_array[i].left.frame_1 = new Mat(frame);
-		viewpoint_frame_array[i].left.selected_frame = 0;
-
-		viewpoint_frame_array[i].right.frame_0 = new Mat(frame);
-		viewpoint_frame_array[i].right.frame_1 = new Mat(frame);
-		viewpoint_frame_array[i].right.selected_frame = 0;
+		cube_faces[i].left = Mat(frame);
+		cube_faces[i].right = Mat(frame);
 	}
 
 	//start n threads, to cover the entire screen area (each thread does both output eyes)
@@ -65,21 +58,31 @@ int CPU_Render(HINSTANCE hinst)
 
 	while (1){
 		//read any new frames from the cameras
-		for (unsigned char i = 0; i < NUMBER_OF_VIEWPOINTS; ++i){
+		for (unsigned char cam_i = 0; cam_i < number_of_cameras; ++cam_i){
 			//if there is a new frame for a camera, get it
 			//http://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html#videocapture-grab
 			//theretically, since this doesnt have safety checks this could lead to eye misalignment(1 eye camera frame is behind the other), but trade off for quicker new frame updates
-			if (input_views[i].left.grab()){
+			if (cameras[cam_i].cam_left.grab()){
 				Mat next_frame;
-				input_views[i].left.retrieve(next_frame);
-				Mat* next_frame_pointer = new Mat(next_frame);
-				Update_ViewPoint_Frame(&viewpoint_frame_array[i].left, next_frame_pointer);
+				cameras[cam_i].cam_left.retrieve(next_frame);
+				//copy slices in this camera into cube faces
+				for (unsigned char cube_face = 0; cube_face < cameras[cam_i].number_of_cube_faces; ++cube_face){
+					//update the frame with the new slice, in place(so don't need safety)
+					next_frame.copyTo(Mat(cube_faces[cameras[cam_i].slices_of[cube_face].cube_face].left,
+											  Rect(cameras[cam_i].slices_of[cube_face].slice_loc_in_view_x, cameras[cam_i].slices_of[cube_face].slice_loc_in_view_y, 
+												   cameras[cam_i].slices_of[cube_face].slice_width,         cameras[cam_i].slices_of[cube_face].slice_height)));
+				}
 			}
-			if (input_views[i].right.grab()){
+			if (cameras[cam_i].cam_right.grab()){
 				Mat next_frame;
-				input_views[i].right.retrieve(next_frame);
-				Mat* next_frame_pointer = new Mat(next_frame);
-				Update_ViewPoint_Frame(&viewpoint_frame_array[i].right, next_frame_pointer);
+				cameras[cam_i].cam_right.retrieve(next_frame);
+				//copy slices in this camera into cube faces
+				for (unsigned char cube_face = 0; cube_face < cameras[cam_i].number_of_cube_faces; ++cube_face){
+					//update the frame with the new slice, in place(so don't need safety)
+					next_frame.copyTo(Mat(cube_faces[cameras[cam_i].slices_of[cube_face].cube_face].right,
+										  Rect(cameras[cam_i].slices_of[cube_face].slice_loc_in_view_x, cameras[cam_i].slices_of[cube_face].slice_loc_in_view_y,
+											   cameras[cam_i].slices_of[cube_face].slice_width,         cameras[cam_i].slices_of[cube_face].slice_height)));
+				}
 			}
 		}
 
@@ -101,30 +104,6 @@ int CPU_Render(HINSTANCE hinst)
 	}
 
 	return EXIT_SUCCESS;
-}
-
-//inline helper function for updaing the frame pointer data for an eye
-static inline void Update_ViewPoint_Frame(Frame_Pointer* frame, Mat* next_frame_pointer){
-	//put new frame in framebuffer and update frame buffer current
-	switch (frame->selected_frame){
-		case 0:
-			//this is the only syncronization needed because b4 this point, if a thread gets a pointer to the image data,
-			//the mat's refcount will atomicly increment, and this section wont free the image data, but will change the pointer.
-			//so the old thread will still have access to stale, unfreed data.
-			EnterCriticalSection(&update_frame_buffer);
-				frame->frame_1->release();
-				frame->frame_1 = next_frame_pointer;//this changes the pointer to a new malloc, non-atomically.
-				frame->selected_frame = 1;//must be atomic
-			LeaveCriticalSection(&update_frame_buffer);
-			break;
-		case 1:
-			EnterCriticalSection(&update_frame_buffer);
-				frame->frame_0->release();
-				frame->frame_0 = next_frame_pointer;
-				frame->selected_frame = 0;
-			LeaveCriticalSection(&update_frame_buffer);
-			break;
-	}
 }
 
 DWORD WINAPI Project_to_Screen(void* input){
@@ -177,22 +156,8 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((za + 1.0) / 2.0) - 1.0) * (CUBE_FACE_WIDTH-1));
 					yPixel = (int)((((ya + 1.0) / 2.0)) * (CUBE_FACE_HEIGHT-1));
 
-					switch (viewpoint_frame_array[right_view].left.selected_frame){
-						case 0:
-							pixel_left = viewpoint_frame_array[right_view].left.frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-						case 1:
-							pixel_left = viewpoint_frame_array[right_view].left.frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-					}
-					switch (viewpoint_frame_array[right_view].right.selected_frame){
-						case 0:
-							pixel_right = viewpoint_frame_array[right_view].right.frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-						case 1:
-							pixel_right = viewpoint_frame_array[right_view].right.frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-					}
+					pixel_left = cube_faces[right_view].left.at<Vec3b>(abs(yPixel), abs(xPixel));
+					pixel_right = cube_faces[right_view].right.at<Vec3b>(abs(yPixel), abs(xPixel));
 				}
 				else if (xa == -1)
 				{
@@ -200,23 +165,8 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((za + 1.0) / 2.0)) * (CUBE_FACE_WIDTH-1));
 					yPixel = (int)((((ya + 1.0) / 2.0)) * (CUBE_FACE_HEIGHT-1));
 
-					switch (viewpoint_frame_array[left_view].left.selected_frame){
-						case 0:
-							EnterCriticalSection(&update_frame_buffer);
-							pixel_left = viewpoint_frame_array[left_view].left.frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-						case 1:
-							pixel_left = viewpoint_frame_array[left_view].left.frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-					}
-					switch (viewpoint_frame_array[left_view].right.selected_frame){
-						case 0:
-							pixel_right = viewpoint_frame_array[left_view].right.frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-						case 1:
-							pixel_right = viewpoint_frame_array[left_view].right.frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-					}
+					pixel_left = cube_faces[left_view].left.at<Vec3b>(abs(yPixel), abs(xPixel));
+					pixel_right = cube_faces[left_view].right.at<Vec3b>(abs(yPixel), abs(xPixel));
 				}
 				else if (ya == -1)
 				{
@@ -226,22 +176,8 @@ DWORD WINAPI Project_to_Screen(void* input){
 					//flip vertical
 					yPixel = (CUBE_FACE_HEIGHT - 1) - abs(yPixel);
 
-					switch (viewpoint_frame_array[top_view].left.selected_frame){
-						case 0:
-							pixel_left = viewpoint_frame_array[top_view].left.frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-						case 1:
-							pixel_left = viewpoint_frame_array[top_view].left.frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-					}
-					switch (viewpoint_frame_array[top_view].right.selected_frame){
-						case 0:
-							pixel_right = viewpoint_frame_array[top_view].right.frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-						case 1:
-							pixel_right = viewpoint_frame_array[top_view].right.frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-					}
+					pixel_left = cube_faces[top_view].left.at<Vec3b>(abs(yPixel), abs(xPixel));
+					pixel_right = cube_faces[top_view].right.at<Vec3b>(abs(yPixel), abs(xPixel));
 				}
 				else if (ya == 1)
 				{
@@ -251,22 +187,8 @@ DWORD WINAPI Project_to_Screen(void* input){
 					//flip vertical
 					yPixel = (CUBE_FACE_HEIGHT - 1) - abs(yPixel);
 
-					switch (viewpoint_frame_array[bottom_view].left.selected_frame){
-						case 0:
-							pixel_left = viewpoint_frame_array[bottom_view].left.frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-						case 1:
-							pixel_left = viewpoint_frame_array[bottom_view].left.frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-					}
-					switch (viewpoint_frame_array[bottom_view].right.selected_frame){
-						case 0:
-							pixel_right = viewpoint_frame_array[bottom_view].right.frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-						case 1:
-							pixel_right = viewpoint_frame_array[bottom_view].right.frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-					}
+					pixel_left = cube_faces[bottom_view].left.at<Vec3b>(abs(yPixel), abs(xPixel));
+					pixel_right = cube_faces[bottom_view].right.at<Vec3b>(abs(yPixel), abs(xPixel));
 				}
 				else if (za == 1)
 				{
@@ -274,22 +196,8 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((xa + 1.0) / 2.0)) * (CUBE_FACE_WIDTH-1));
 					yPixel = (int)((((ya + 1.0) / 2.0)) * (CUBE_FACE_HEIGHT-1));
 
-					switch (viewpoint_frame_array[front_view].left.selected_frame){
-						case 0:
-							pixel_left = viewpoint_frame_array[front_view].left.frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-						case 1:
-							pixel_left = viewpoint_frame_array[front_view].left.frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-					}
-					switch (viewpoint_frame_array[front_view].right.selected_frame){
-						case 0:
-							pixel_right = viewpoint_frame_array[front_view].right.frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-						case 1:
-							pixel_right = viewpoint_frame_array[front_view].right.frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-					}
+					pixel_left = cube_faces[front_view].left.at<Vec3b>(abs(yPixel), abs(xPixel));
+					pixel_right = cube_faces[front_view].right.at<Vec3b>(abs(yPixel), abs(xPixel));
 				}
 				else if (za == -1)
 				{
@@ -297,22 +205,8 @@ DWORD WINAPI Project_to_Screen(void* input){
 					xPixel = (int)((((xa + 1.0) / 2.0) - 1.0) * (CUBE_FACE_WIDTH-1));
 					yPixel = (int)((((ya + 1.0) / 2.0)) * (CUBE_FACE_HEIGHT-1));
 
-					switch (viewpoint_frame_array[back_view].left.selected_frame){
-						case 0:
-							pixel_left = viewpoint_frame_array[back_view].left.frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-						case 1:
-							pixel_left = viewpoint_frame_array[back_view].left.frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-					}
-					switch (viewpoint_frame_array[back_view].right.selected_frame){
-						case 0:
-							pixel_right = viewpoint_frame_array[back_view].right.frame_0->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-						case 1:
-							pixel_right = viewpoint_frame_array[back_view].right.frame_1->at<Vec3b>(abs(yPixel), abs(xPixel));
-							break;
-					}
+					pixel_left = cube_faces[back_view].left.at<Vec3b>(abs(yPixel), abs(xPixel));
+					pixel_right = cube_faces[back_view].right.at<Vec3b>(abs(yPixel), abs(xPixel));
 				}
 				else
 				{
