@@ -24,9 +24,6 @@ typedef struct {
 DWORD WINAPI Grab_Camera_Frame(void* views_responsible_p);
 DWORD WINAPI VR_Render_Thread(void* null);
 
-#undef NUM_THREADS
-#define NUM_THREADS 2 //TEMP: higher fps using fewer camera watching threads
-
 int GPU_Render(HINSTANCE hinst)
 {
 	//setup the frame buffer and selected frame, + other gpu variables
@@ -36,12 +33,12 @@ int GPU_Render(HINSTANCE hinst)
 	}
 
 	assert(number_of_cameras >= NUM_THREADS - 1);//can't currently handle cases this isnt true.	
-	double views_per_thread = NUMBER_OF_VIEWPOINTS / (double)(NUM_THREADS - 1);
+	double cams_per_thread = number_of_cameras / (double)(NUM_THREADS - 1);
 	//start threads to read new frames from the cameras
 	for (unsigned char i = 0; i < NUM_THREADS-1; ++i){
 		Camera_Thread_Watcher* cams_responsible = (Camera_Thread_Watcher*)malloc(sizeof(Camera_Thread_Watcher));
-		cams_responsible->start_cam_i = round(i*views_per_thread);
-		cams_responsible->end_cam_i = round((i + 1)*views_per_thread);
+		cams_responsible->start_cam_i = round(i*cams_per_thread);
+		cams_responsible->end_cam_i = round((i + 1)*cams_per_thread);
 
 		CreateThread(NULL, 0, Grab_Camera_Frame, (void*)cams_responsible, 0, NULL);
 	}
@@ -62,6 +59,7 @@ int GPU_Render(HINSTANCE hinst)
 			projected_frame.right = Mat(SCREEN_HEIGHT, SCREEN_WIDTH, CV_8UC4, projected_frame_data->right);
 			#if USE_VR
 				UpdateTexture(projected_frame.left.data, projected_frame.right.data);//2 ms
+				//TODO add Main_VR_Render_Loop back here
 			#endif
 		}
 	}
@@ -109,6 +107,8 @@ DWORD WINAPI Grab_Camera_Frame(void* cameras_responsible_p){
 		//we don't want to 100% cpu, and know that a camera wont have a new frame instantly available, so yield
 		Sleep(10);
 	}
+
+	free(cameras_responsible_p);
 }
 
 DWORD WINAPI VR_Render_Thread(void* null){
@@ -118,7 +118,7 @@ DWORD WINAPI VR_Render_Thread(void* null){
 	#endif
 
 	while (1){
-		//want to update vr headset regardless of new frame (something something async timewarp is stupid)
+		//TODO FIX want to update vr headset regardless of new frame (something something async timewarp is stupid)
 		#if USE_VR
 			Main_VR_Render_Loop();
 		#else

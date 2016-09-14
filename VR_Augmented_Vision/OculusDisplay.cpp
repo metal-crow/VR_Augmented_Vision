@@ -877,6 +877,9 @@ bool SetupMainLoop()
 	// FloorLevel will give tracking poses where the floor height is 0
 	ovr_SetTrackingOriginType(session, ovrTrackingOrigin_FloorLevel);
 
+	//TODO disable all rotation tracking
+	//need this so frame drops dont make image offset from current head direction
+
 	return true;
 }
 
@@ -926,7 +929,7 @@ bool Main_VR_Render_Loop(){
 	// Initialize our single full screen Fov layer.
 	ovrLayerEyeFov ld = {};
 	ld.Header.Type = ovrLayerType_EyeFov;
-	ld.Header.Flags = 0;// ovrLayerFlag_HeadLocked | ovrLayerFlag_HighQuality;
+	ld.Header.Flags = ovrLayerFlag_HighQuality;
 
 	for (int eye = 0; eye < 2; ++eye)
 	{

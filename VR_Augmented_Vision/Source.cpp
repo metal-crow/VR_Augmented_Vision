@@ -90,7 +90,10 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int)
 	cameras[5].slices_of[0].slice_loc_in_view_x = 0;
 	cameras[5].slices_of[0].slice_loc_in_view_y = 0;
 
-	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);//REALTIME_PRIORITY_CLASS
+	bool prio_set = SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
+	if (!prio_set){
+		fprintf(stderr, "Unable to set process to REALTIME");
+	}
 
 	//initalize default output images
 	projected_frame.left = Mat::zeros(SCREEN_HEIGHT, SCREEN_WIDTH, CV_8UC4);//CV_[The number of bits per item][Signed or Unsigned][Type Prefix]C[The channel number]
