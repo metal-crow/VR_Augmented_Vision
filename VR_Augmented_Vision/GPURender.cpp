@@ -3,7 +3,7 @@
 #include "kernal.h"
 #include <assert.h>
 
-//in between step for the gpu to copy the projected frame datat to before its converted to a mat on the host
+//in between step for the gpu to copy the projected frame data to before its converted to a mat on the host
 typedef struct{
 	unsigned char* left;
 	unsigned char* right;
@@ -43,6 +43,7 @@ int GPU_Render(HINSTANCE hinst)
 		CreateThread(NULL, 0, Grab_Camera_Frame, (void*)cams_responsible, 0, NULL);
 	}
 
+	//start thread to send images to oculus
 	HANDLE vr_thread = CreateThread(NULL, 0, VR_Render_Thread, NULL, 0, NULL);
 	SetThreadPriority(vr_thread, THREAD_PRIORITY_TIME_CRITICAL);
 
@@ -58,6 +59,7 @@ int GPU_Render(HINSTANCE hinst)
 			projected_frame.left = Mat(SCREEN_HEIGHT, SCREEN_WIDTH, CV_8UC4, projected_frame_data->left);
 			projected_frame.right = Mat(SCREEN_HEIGHT, SCREEN_WIDTH, CV_8UC4, projected_frame_data->right);
 			#if USE_VR
+				//set textures used for oculus display
 				UpdateTexture(projected_frame.left.data, projected_frame.right.data);//2 ms
 				//TODO add Main_VR_Render_Loop back here
 			#endif
@@ -111,6 +113,9 @@ DWORD WINAPI Grab_Camera_Frame(void* cameras_responsible_p){
 	free(cameras_responsible_p);
 }
 
+//updates to the oculus are sent in this thread
+//optimally this would not exist, and oculus would only update on a new frame
+//however, currently that leads to issues (something something async timewarp is stupid)
 DWORD WINAPI VR_Render_Thread(void* null){
 	#if DEBUG_TIME
 		long start_time = clock();
@@ -118,7 +123,6 @@ DWORD WINAPI VR_Render_Thread(void* null){
 	#endif
 
 	while (1){
-		//TODO FIX want to update vr headset regardless of new frame (something something async timewarp is stupid)
 		#if USE_VR
 			Main_VR_Render_Loop();
 		#else
